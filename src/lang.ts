@@ -17,22 +17,26 @@ const each = function(obj: object | any[], fn: Function): undefined {
 
 const rEach = function(array: any[], fn: Function, finishFn: Function, i: number = -1): undefined {
   let next: Function;
+
   i++;
+
   if (array[i] === undefined) {
     if (typeof finishFn === 'function') finishFn();
     return;
   }
+
   next = () => rEach(array, fn, finishFn, i);
   fn(array[i], i, next);
 }
 
 const findIndex = function(arr: any[], fn: Function): number {
-	for (let i = 0, len = arr.length; i < len; i++) {
-		if (fn(arr[i], i, arr)) {
-			return i;
-		}
-	}
-	return -1;
+  for (let i = 0, len = arr.length; i < len; i++) {
+    if (fn(arr[i], i, arr)) {
+      return i;
+    }
+  }
+
+  return -1;
 }
 
 const find = function(arr: any[], fn: Function): any {
@@ -41,6 +45,7 @@ const find = function(arr: any[], fn: Function): any {
       return arr[i];
     }
   }
+
   return null;
 }
 
@@ -51,6 +56,7 @@ const filter = function (arr: any[], fn: Function): any[] {
       result.push(arr[i]);
     }
   }
+
   return result;
 };
 
