@@ -88,7 +88,7 @@ declare interface PowerShellModule {
   EntryPointAddress: number;
   FileVersionInfo: string;
   Site: string;
-  Container: string
+  Container: string;
 }
 
 declare interface PowerShellSafeHandle {

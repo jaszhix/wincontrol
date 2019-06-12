@@ -66,8 +66,8 @@ class Log {
 
       for (let i = 0; i < args.length; i++) {
         if (args[i] instanceof Error) {
-          argsString += `${args[i].message}\n`;
-          argsString += `${args[i].stack}\n`;
+          argsString += `${args[i].message}${EOL}`;
+          argsString += `${args[i].stack}${EOL}`;
           continue;
         }
         argsString += `${JSON.stringify(args[i])} `;

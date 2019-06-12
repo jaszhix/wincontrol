@@ -18,7 +18,6 @@ import {
 import {find} from './lang';
 import log from './log';
 
-const {EOL} = os;
 const coreCount: number = os.cpus().length;
 const homeDir: string = os.homedir();
 const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
