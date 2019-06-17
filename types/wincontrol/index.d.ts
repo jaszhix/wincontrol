@@ -13,6 +13,7 @@ declare interface ProcessConfiguration {
   terminationDelay?: number;
   suspensionDelay?: number;
   processes: string[];
+  disableIfRunning: string[];
 }
 
 declare interface AppConfiguration {

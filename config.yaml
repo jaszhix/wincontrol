@@ -31,3 +31,17 @@ profiles:
     ioPriority: low
     processes:
       - WindowsInternal.ComposableShell.Experiences.TextInput.InputApp
+
+  # Example using disableIfRunning. OfficeClickToRun is only needed while an Office app runs,
+  # but otherwise consumes CPU resources in the background.
+  - name: terminateClickToRun
+    terminationDelay: 1
+    disableIfRunning:
+      - EXCEL
+      - MSACCESS
+      - MSPUB
+      - OUTLOOK
+      - POWERPNT
+      - WINWORD
+    processes:
+      - OfficeClickToRun

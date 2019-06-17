@@ -161,12 +161,11 @@ const enforceAffinityPolicy = (): void => {
     const now = Date.now();
     const {profiles, interval} = appConfig;
     const activeWindow = getActiveWindow();
-    let processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
-    let len = processList.length;
+    const processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
 
-    for (let i = 0; i < len; i++) {
+    for (let i = 0, len = processList.length; i < len; i++) {
       let ps = processList[i];
-      let {Id} = ps;
+      let {Id, Name} = ps;
 
       // If we've ever failed, there's a good chance we don't have correct permissions to modify the process.
       // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
@@ -184,15 +183,22 @@ const enforceAffinityPolicy = (): void => {
       let terminationDelay: number;
       let suspensionDelay: number;
 
-      if (ps.Id === process.pid || ps.Id === childProcess.pid) continue;
+      if (Id === process.pid || Id === childProcess.pid) continue;
 
       for (let i = 0, len = profiles.length; i < len; i++) {
         let profile = profiles[i];
         let processMatched = profile.processes.indexOf(ps.Name) > -1;
 
         if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
+          let {disableIfRunning} = profile;
+          let attributesString = `[${profile.name}] ${Name} (${Id}): `;
           let logAttributes = [];
-          let attributesString = `[${profile.name}] ${ps.Name} (${ps.Id}): `;
+
+          // Only enforce this profile if the definitions in disableIfRunning are not running.
+          if (disableIfRunning && find(processList, (item) => disableIfRunning.indexOf(item.Name) > -1)) {
+            log.info(`Profile will not be enforced due to blacklisted process running: ${Name} (${Id})`);
+            continue;
+          }
 
           if (isActive) {
             if (profile.affinity && profile.affinity !== fullAffinity) {
