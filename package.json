@@ -32,7 +32,7 @@
     "ts-node": "^8.1.0",
     "typescript": "^3.4.5"
   },
-  "engines" : {
+  "engines": {
     "node": "10"
   }
 }

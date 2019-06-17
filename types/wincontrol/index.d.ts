@@ -18,7 +18,8 @@ declare interface ProcessConfiguration {
 
 declare interface AppConfiguration {
   interval: number;
-  enableLogging?: boolean;
+  logging?: boolean;
+  fullscreenPriority?: boolean;
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
 }

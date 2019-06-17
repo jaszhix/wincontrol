@@ -2,6 +2,8 @@
 # This assumes the host has 14 cores. Logical (HT) cores should be excluded as they are automatically accounted for.
 
 interval: 120000
+logging: true
+fullscreenPriority: true
 
 affinities:
   - name: systemLow

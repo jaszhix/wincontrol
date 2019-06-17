@@ -289,7 +289,7 @@ const getPriorityClass = function(id: number): number {
   return priority;
 };
 
-const getProcessorAffinity = function(id: number): Array<number|Buffer> {
+const getProcessorAffinity = function(id: number): any[] {
   const handle = getHandleForProcessId(id);
   let processAffinity = ref.alloc('uint32');
   let systemAffinity = ref.alloc('uint32');

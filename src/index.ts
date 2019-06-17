@@ -1,13 +1,22 @@
-import os from 'os';
 import fs from 'fs-extra';
-
 import {exec, ChildProcess} from 'child_process';
 import yaml from 'yaml';
 import {
+  psCommand,
+  execOptions,
+  appDir,
+  logDir,
+  appConfigYamlPath,
+  coreCount,
+  cpuPriorityMap,
+  pagePriorityMap,
+  ioPriorityMap
+} from './constants';
+import {
   getActiveWindow,
   //getWindows,
-  //getPriorityClass,
-  //getProcessorAffinity,
+  getPriorityClass,
+  getProcessorAffinity,
   setPriorityClass,
   setProcessorAffinity,
   setPagePriority,
@@ -15,28 +24,21 @@ import {
   terminateProcess,
   suspendProcess
 } from './nt';
-import {find} from './lang';
+import {getPhysicalCoreCount} from './utils';
+import {each, find} from './lang';
 import log from './log';
 
-const coreCount: number = os.cpus().length;
-const homeDir: string = os.homedir();
-const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
-const appConfigYamlPath: string = `${appDir}\\config.yaml`;
+let physicalCoreCount: number;
+let useHT: boolean = false;
+let fullAffinity: number = null;
 let childProcess: ChildProcess = null;
+let failedProcesses = [];
+let fullscreenOptimizedPid = 0;
+let fullscreenOriginalState = null;
+let timeout: NodeJS.Timeout = null;
+let appConfig: AppConfiguration = null;
 
-const options: any = {
-  windowsHide: true,
-  encoding: 'utf8',
-  timeout: 0,
-  maxBuffer: 4096*4096,
-  // cwd: null,
-  // env: null,
-  stdio: ['ignore', 'pipe', 'ignore']
-}
-
-const command = `powershell "Get-Process | Select-Object -Property 'Name','Id','StartTime','Threads','number','TotalProcessorTime' | ConvertTo-Json -Compress"`;
-
-const getAffinityForCoreRanges = (cores: Array<number[]>, useHT: boolean = true): number => {
+const getAffinityForCoreRanges = (cores: Array<number[]>): number => {
   let n: number = 0;
   let flatCores: number[] = [];
 
@@ -76,42 +78,6 @@ const getAffinityForCoreRanges = (cores: Array<number[]>, useHT: boolean = true)
   }
   return n;
 };
-
-
-
-let timeout: NodeJS.Timeout = null;
-
-const fullAffinity: number = getAffinityForCoreRanges([[0, 13]]);
-
-enum cpuPriorityMap {
-  idle = 64,
-  belowNormal = 16384,
-  normal = 32,
-  aboveNormal = 32768,
-  high = 128,
-  realTime = 256,
-  processModeBackgroundBegin = 1048576
-};
-
-enum pagePriorityMap {
-  idle = 1,
-  low = 2,
-  medium = 3,
-  belowNormal = 4,
-  normal = 5
-};
-
-enum ioPriorityMap {
-  idle = 0,
-  low,
-  normal,
-  high
-}
-
-const failedProcesses = [];
-let fullscreenOptimizedPid = 0;
-
-let appConfig: AppConfiguration = null;
 
 const readYamlFile = (path: string): Promise<any> => {
   return new Promise(function(resolve, reject) {
@@ -157,7 +123,7 @@ const enforceAffinityPolicy = (): void => {
 
   log.open();
 
-  childProcess = exec(command, options, (err, stdout, stderr) => {
+  childProcess = exec(psCommand, execOptions, (err, stdout, stderr) => {
     const now = Date.now();
     const {profiles, interval} = appConfig;
     const activeWindow = getActiveWindow();
@@ -171,17 +137,20 @@ const enforceAffinityPolicy = (): void => {
       // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
       // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
       // fullscreen priority is applied.
-      if (failedProcesses.indexOf(Id) > -1 && ps.Id !== fullscreenOptimizedPid) continue;
+      if (failedProcesses.indexOf(Id) > -1 && Id !== fullscreenOptimizedPid) continue;
 
-      let isActive = ps.Id === activeWindow.pid;
-      let usePerformancePriorities = isActive && activeWindow.isFullscreen && ps.Name !== 'explorer';
-      let isFullscreenOptimized = fullscreenOptimizedPid && ps.Id === fullscreenOptimizedPid;
+      let isActive = Id === activeWindow.pid;
+      let usePerformancePriorities = isActive && activeWindow.isFullscreen && Name !== 'explorer';
+      let isFullscreenOptimized = fullscreenOptimizedPid && Id === fullscreenOptimizedPid;
+      let fullscreenPriorityBoostAffected = false;
       let affinity: number;
       let cpuPriority: number;
       let pagePriority: number;
       let ioPriority: number;
       let terminationDelay: number;
       let suspensionDelay: number;
+      let processAffinity: number;
+      let systemAffinity: number;
 
       if (Id === process.pid || Id === childProcess.pid) continue;
 
@@ -208,25 +177,52 @@ const enforceAffinityPolicy = (): void => {
             }
           }
 
-          if (usePerformancePriorities && !fullscreenOptimizedPid) {
-            profile = Object.assign({}, profile, {
-              affinity: fullAffinity,
-              cpuPriority: cpuPriorityMap.high,
-              pagePriority: pagePriorityMap.normal,
-              ioPriority: ioPriorityMap.normal,
-            });
-            console.log('PRIORITY BOOSTING:', ps.Name);
-            fullscreenOptimizedPid = ps.Id;
-          } else if (isFullscreenOptimized && !usePerformancePriorities) {
-            profile = Object.assign({}, profile, {
-              affinity: fullAffinity,
-              cpuPriority: cpuPriorityMap.normal,
-              pagePriority: pagePriorityMap.normal,
-              ioPriority: ioPriorityMap.normal,
-            });
-            fullscreenOptimizedPid = 0;
-            console.log('RESETTING PRIORITY BOOST:', ps.Name);
-          } else if (!processMatched) continue;
+          // Handle fullscreen priority increase. If the active window is taking up exactly
+          // the dimensions of the primary monitor, then we will give it high priority.
+          // TODO: This doesn't work with some games, so there is more needing to be done
+          // as far as detecting the window/monitor rects.
+          if (appConfig.fullscreenPriority) {
+            switch (true) {
+              case (usePerformancePriorities && !fullscreenOptimizedPid):
+                [processAffinity, systemAffinity] = getProcessorAffinity(Id);
+
+                fullscreenOriginalState = {
+                  cpuPriority: getPriorityClass(Id),
+                  affinity: systemAffinity,
+                };
+
+                profile = Object.assign({}, profile, {
+                  affinity: fullAffinity,
+                  cpuPriority: cpuPriorityMap.high,
+                  pagePriority: pagePriorityMap.normal,
+                  ioPriority: ioPriorityMap.normal,
+                });
+
+                log.info(`Priority boosting fullscreen window ${Name} (${Id})`);
+
+                fullscreenOptimizedPid = Id;
+                fullscreenPriorityBoostAffected = true;
+                break;
+              case (isFullscreenOptimized && !usePerformancePriorities):
+                profile = Object.assign({}, profile, {
+                  affinity: fullscreenOriginalState.affinity,
+                  cpuPriority: fullscreenOriginalState.cpuPriority,
+                  pagePriority: pagePriorityMap.normal,
+                  ioPriority: ioPriorityMap.normal,
+                });
+
+                log.info(`Resetting priority boost for previously fullscreen window ${Name} (${Id})`);
+
+                fullscreenOptimizedPid = 0;
+                fullscreenPriorityBoostAffected = true;
+                fullscreenOriginalState = null;
+                break;
+            }
+          }
+
+          // Stop here if the process doesn't match - the fullscreen priority logic above is
+          // intended to work for all processes.
+          if (!fullscreenPriorityBoostAffected && !processMatched) continue;
 
           if (suspensionDelay = profile.suspensionDelay) {
             logAttributes.push(`suspension delay: ${suspensionDelay}`);
@@ -252,7 +248,6 @@ const enforceAffinityPolicy = (): void => {
             logAttributes.push(`ioPriority: ${ioPriorityMap[ioPriority.toString()]}`);
           }
 
-          //if (ps.Id === activeWindow.pid) console.log(attributesString);
           log.info(`${attributesString} ${logAttributes.join(', ')}`);
           break;
         }
@@ -284,8 +279,8 @@ const enforceAffinityPolicy = (): void => {
         if (!attemptProcessModification(setProcessorAffinity, Id, affinity)) continue;
       }
     }
-    log.info(`Finished process enforcement in ${Date.now() - now}ms`);
 
+    log.info(`Finished process enforcement in ${Date.now() - now}ms`);
     log.close();
 
     timeout = setTimeout(enforceAffinityPolicy, interval);
@@ -293,22 +288,32 @@ const enforceAffinityPolicy = (): void => {
 };
 
 const init = () => {
+  // Lower the priority of wincontrol to idle
+  setPriorityClass(process.pid, cpuPriorityMap.idle);
+
   log.info('====================== New session ======================');
-  log.info(`Enforcement interval: ${appConfig.interval}`);
+  log.info(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
+  log.info(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
+  log.info(`Physical core count: ${physicalCoreCount}`);
+  log.info(`Enforcement interval: ${appConfig.interval}ms`);
   log.info(`CPU affinity presets: ${appConfig.affinities.length}`);
   log.info(`Process profiles: ${appConfig.profiles.length}`);
   log.info('=========================================================');
-
-  setPriorityClass(process.pid, cpuPriorityMap.idle);
-
   log.close();
 
   enforceAffinityPolicy();
 
-  console.log('Initialized')
+  console.log('Initialized');
 };
 
-fs.ensureDir(appDir)
+getPhysicalCoreCount()
+  .then((count) => {
+    useHT = count !== coreCount;
+    physicalCoreCount = count;
+    fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]]);
+    return fs.ensureDir(appDir);
+  })
+  .then(fs.ensureDir(logDir))
   .then(fs.ensureFile(appConfigYamlPath))
   .then(() => {
     /* TODO: Setup defaults */
@@ -318,15 +323,21 @@ fs.ensureDir(appDir)
     if (!config) {
       config = {
         interval: 120000,
-        enableLogging: true,
+        logging: true,
         profiles: [],
         affinities: []
       };
     }
 
-    log.enabled = config.enableLogging;
-
+    log.enabled = config.logging;
     log.open();
+
+    // Strip process names of file extension notation as the Get-Process output doesn't have it.
+    each(config.profiles, (profile) => {
+      each(profile.processes, (name, i) => {
+        profile.processes[i] = name.toLowerCase().replace(/\.exe$/, '');
+      });
+    });
 
     appConfig = config;
 

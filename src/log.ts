@@ -2,6 +2,7 @@ import {EOL} from 'os';
 import {open, write, close} from 'fs';
 import path from 'path';
 import {tryFn} from './lang'
+import {logDir} from './constants';
 
 function processInput (path: string, text: string) {
   open(path, 'a', 666, function(err, id) {
@@ -27,8 +28,8 @@ class Log {
   private lines: string[] = [];
 
   constructor(
-    location = './',
-    fileNamePrefix = 'wincontrol',
+    location = logDir,
+    fileNamePrefix = `session-${new Date().toISOString().split('T')[0]}`,
     enableConsoleLog = false
   ) {
     this.location = location;
