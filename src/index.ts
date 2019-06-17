@@ -133,6 +133,8 @@ const enforceAffinityPolicy = (): void => {
       let ps = processList[i];
       let {Id, Name} = ps;
 
+      Name = Name.toLowerCase();
+
       // If we've ever failed, there's a good chance we don't have correct permissions to modify the process.
       // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
       // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
@@ -164,7 +166,7 @@ const enforceAffinityPolicy = (): void => {
           let logAttributes = [];
 
           // Only enforce this profile if the definitions in disableIfRunning are not running.
-          if (disableIfRunning && find(processList, (item) => disableIfRunning.indexOf(item.Name) > -1)) {
+          if (disableIfRunning && find(processList, (item) => disableIfRunning.indexOf(item.Name.toLowerCase()) > -1)) {
             log.info(`Profile will not be enforced due to blacklisted process running: ${Name} (${Id})`);
             continue;
           }
@@ -336,6 +338,9 @@ getPhysicalCoreCount()
     each(config.profiles, (profile) => {
       each(profile.processes, (name, i) => {
         profile.processes[i] = name.toLowerCase().replace(/\.exe$/, '');
+      });
+      each(profile.disableIfRunning, (name, i) => {
+        profile.disableIfRunning[i] = name.toLowerCase().replace(/\.exe$/, '');
       });
     });
 
