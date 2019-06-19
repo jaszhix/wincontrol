@@ -91,18 +91,27 @@ const parseProfilesConfig = (profiles: ProcessConfiguration[]): ProcessConfigura
   for (let i = 0, len = profiles.length; i < len; i++) {
     const profile = profiles[i];
     const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
+    const {cpuPriority, pagePriority, ioPriority} = profile;
 
-    if (!affinity) {
-      log.info('Skipping affinity parsing for process profile:', profile.name);
-      continue;
+    // Strip process names of file extension notation as the Get-Process output doesn't have it.
+    each(profile.processes, (name, i) => {
+      profile.processes[i] = name.toLowerCase().replace(/\.exe$/, '');
+    });
+    each(profile.disableIfRunning, (name, i) => {
+      profile.disableIfRunning[i] = name.toLowerCase().replace(/\.exe$/, '');
+    });
+
+    if (affinity) {
+      Object.assign(profile, {
+        affinity: getAffinityForCoreRanges(affinity.ranges),
+        affinityName: affinity.name,
+      });
     }
 
     Object.assign(profile, {
-      affinity: getAffinityForCoreRanges(affinity.ranges),
-      affinityName: affinity.name,
-      cpuPriority: cpuPriorityMap[profile.cpuPriority],
-      pagePriority: pagePriorityMap[profile.pagePriority],
-      ioPriority: ioPriorityMap[profile.ioPriority]
+      cpuPriority: cpuPriority != null ? cpuPriorityMap[cpuPriority] : undefined,
+      pagePriority: pagePriority != null ? pagePriorityMap[pagePriority] : undefined,
+      ioPriority: ioPriority != null ? ioPriorityMap[ioPriority] : undefined,
     });
   }
 
@@ -158,7 +167,7 @@ const enforceAffinityPolicy = (): void => {
 
       for (let i = 0, len = profiles.length; i < len; i++) {
         let profile = profiles[i];
-        let processMatched = profile.processes.indexOf(ps.Name) > -1;
+        let processMatched = profile.processes.indexOf(Name) > -1;
 
         if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
           let {disableIfRunning} = profile;
@@ -333,16 +342,6 @@ getPhysicalCoreCount()
 
     log.enabled = config.logging;
     log.open();
-
-    // Strip process names of file extension notation as the Get-Process output doesn't have it.
-    each(config.profiles, (profile) => {
-      each(profile.processes, (name, i) => {
-        profile.processes[i] = name.toLowerCase().replace(/\.exe$/, '');
-      });
-      each(profile.disableIfRunning, (name, i) => {
-        profile.disableIfRunning[i] = name.toLowerCase().replace(/\.exe$/, '');
-      });
-    });
 
     appConfig = config;
 
