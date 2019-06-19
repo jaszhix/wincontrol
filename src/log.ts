@@ -2,7 +2,7 @@ import {EOL} from 'os';
 import {open, write, close} from 'fs';
 import path from 'path';
 import {tryFn} from './lang'
-import {logDir} from './constants';
+import {logDir, LogLevel} from './constants';
 
 function processInput (path: string, text: string) {
   open(path, 'a', 666, function(err, id) {
@@ -12,17 +12,12 @@ function processInput (path: string, text: string) {
   });
 }
 
-enum LogLevel {
-  info = 'INFO',
-  warning = 'WARNING',
-  error = 'ERROR'
-}
-
 class Log {
   public location: string;
   public fileNamePrefix: string;
   public enabled: boolean = true;
   public enableConsoleLog: boolean = false;
+  public logLevel: number = 0;
 
   // Used to queue lines of the log to be appended, so the file is written less frequently in chunks.
   private lines: string[] = [];
@@ -57,7 +52,7 @@ class Log {
     this.lines = [];
   }
 
-  private update(level: LogLevel, ...args: any[]) {
+  private update(level: number, ...args: any[]) {
     if (this.enableConsoleLog) console.log(...args);
 
     tryFn(() => {
@@ -75,24 +70,24 @@ class Log {
       }
 
       this.lines.push(
-        `[${level}] ${isoString}:    ${argsString.replace(/"/g, '').replace(/\\\\/g, '\\')}`
+        `[${LogLevel[level]}] ${isoString}:    ${argsString.replace(/"/g, '').replace(/\\\\/g, '\\')}`
       );
     });
   }
 
   public info(...args: any[]) {
-    if (!this.enabled) return;
-    this.update(LogLevel.info, ...args);
+    if (!this.enabled || this.logLevel > 0) return;
+    this.update(0, ...args);
   }
 
   public warning(...args: any[]) {
-    if (!this.enabled) return;
-    this.update(LogLevel.warning, ...args);
+    if (!this.enabled || this.logLevel > 1) return;
+    this.update(1, ...args);
   }
 
   public error(...args: any[]) {
     if (!this.enabled) return;
-    this.update(LogLevel.error, ...args);
+    this.update(2, ...args);
   }
 }
 

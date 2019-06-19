@@ -3,6 +3,7 @@
 
 interval: 120000
 logging: true
+logLevel: info
 fullscreenPriority: true
 
 affinities:

@@ -45,6 +45,12 @@ enum ioPriorityMap {
   high
 }
 
+const LogLevel  = [
+  'INFO',
+  'WARNING',
+  'ERROR'
+];
+
 export {
   psCommand,
   execOptions,
@@ -55,5 +61,6 @@ export {
   appConfigYamlPath,
   cpuPriorityMap,
   pagePriorityMap,
-  ioPriorityMap
+  ioPriorityMap,
+  LogLevel
 };

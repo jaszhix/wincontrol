@@ -10,7 +10,8 @@ import {
   coreCount,
   cpuPriorityMap,
   pagePriorityMap,
-  ioPriorityMap
+  ioPriorityMap,
+  LogLevel
 } from './constants';
 import {
   getActiveWindow,
@@ -331,6 +332,8 @@ getPhysicalCoreCount()
     return readYamlFile(appConfigYamlPath);
   })
   .then((config: AppConfiguration) => {
+    let logLevelInvalid = false;
+
     if (!config) {
       config = {
         interval: 120000,
@@ -341,7 +344,16 @@ getPhysicalCoreCount()
     }
 
     log.enabled = config.logging;
+
+    if (log.enabled && config.logLevel) {
+      let index = LogLevel.indexOf(config.logLevel.toUpperCase());
+      if (index > -1) log.logLevel = index;
+      else logLevelInvalid = true;
+    }
+
     log.open();
+
+    if (logLevelInvalid) log.error(`Invalid configuration: ${config.logLevel} is not a valid log level.`)
 
     appConfig = config;
 
