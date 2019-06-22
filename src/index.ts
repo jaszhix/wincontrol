@@ -38,6 +38,7 @@ let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
+let processesConfigured = [];
 
 const getAffinityForCoreRanges = (cores: Array<number[]>): number => {
   let n: number = 0;
@@ -96,7 +97,12 @@ const parseProfilesConfig = (profiles: ProcessConfiguration[]): ProcessConfigura
 
     // Strip process names of file extension notation as the Get-Process output doesn't have it.
     each(profile.processes, (name, i) => {
-      profile.processes[i] = name.toLowerCase().replace(/\.exe$/, '');
+      name = name.toLowerCase().replace(/\.exe$/, '');
+      profile.processes[i] = name;
+
+      if (processesConfigured.indexOf(name) === -1) {
+        processesConfigured.push(name);
+      }
     });
     each(profile.disableIfRunning, (name, i) => {
       profile.disableIfRunning[i] = name.toLowerCase().replace(/\.exe$/, '');
@@ -138,6 +144,9 @@ const enforceAffinityPolicy = (): void => {
     const {profiles, interval} = appConfig;
     const activeWindow = getActiveWindow();
     const processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
+    const {logPerProcessAndRule} = appConfig;
+    let previousProcessName: string;
+    let previousProfile: ProcessConfiguration;
 
     for (let i = 0, len = processList.length; i < len; i++) {
       let ps = processList[i];
@@ -174,6 +183,7 @@ const enforceAffinityPolicy = (): void => {
           let {disableIfRunning} = profile;
           let attributesString = `[${profile.name}] ${Name} (${Id}): `;
           let logAttributes = [];
+          let shouldLog = !logPerProcessAndRule || previousProcessName !== Name || previousProfile !== profile;
 
           // Only enforce this profile if the definitions in disableIfRunning are not running.
           if (disableIfRunning && find(processList, (item) => disableIfRunning.indexOf(item.Name.toLowerCase()) > -1)) {
@@ -260,7 +270,8 @@ const enforceAffinityPolicy = (): void => {
             logAttributes.push(`ioPriority: ${ioPriorityMap[ioPriority.toString()]}`);
           }
 
-          log.info(`${attributesString} ${logAttributes.join(', ')}`);
+          if (shouldLog) log.info(`${attributesString} ${logAttributes.join(', ')}`);
+          previousProfile = profile;
           break;
         }
       }
@@ -290,6 +301,8 @@ const enforceAffinityPolicy = (): void => {
       if (affinity != null) {
         if (!attemptProcessModification(setProcessorAffinity, Id, affinity)) continue;
       }
+
+      previousProcessName = Name;
     }
 
     log.info(`Finished process enforcement in ${Date.now() - now}ms`);
@@ -310,6 +323,7 @@ const init = () => {
   log.info(`Enforcement interval: ${appConfig.interval}ms`);
   log.info(`CPU affinity presets: ${appConfig.affinities.length}`);
   log.info(`Process profiles: ${appConfig.profiles.length}`);
+  log.info(`Processes configured: ${processesConfigured.length}`);
   log.info('=========================================================');
   log.close();
 
@@ -338,6 +352,9 @@ getPhysicalCoreCount()
       config = {
         interval: 120000,
         logging: true,
+        logPerProcessAndRule: true,
+        logLevel: 'info',
+        fullscreenPriority: true,
         profiles: [],
         affinities: []
       };

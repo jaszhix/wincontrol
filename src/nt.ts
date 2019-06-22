@@ -286,6 +286,7 @@ const getPriorityClass = function(id: number): number {
   const priority = kernel32.GetPriorityClass(handle);
 
   kernel32.CloseHandle(handle);
+
   return priority;
 };
 
