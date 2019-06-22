@@ -11,6 +11,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^1.10.2",
+    "@typescript-eslint/parser": "^1.10.2",
     "ffi": "^2.2.0",
     "fs-extra": "^8.0.1",
     "lodash": "^4.17.11",
