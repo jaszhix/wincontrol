@@ -2,4 +2,6 @@ out.json
 node_modules/
 dist/
 .vscode/
+staging/
+release/
 wincontrol.code-workspace

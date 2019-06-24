@@ -26,7 +26,7 @@ import {
   suspendProcess,
   resumeProcess,
 } from './nt';
-import {getPhysicalCoreCount} from './utils';
+import {getPhysicalCoreCount, copyFile} from './utils';
 import {each, find} from './lang';
 import log from './log';
 
@@ -350,12 +350,13 @@ getPhysicalCoreCount()
     fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]]);
     return fs.ensureDir(appDir);
   })
-  .then(fs.ensureDir(logDir))
-  .then(fs.ensureFile(appConfigYamlPath))
-  .then(() => {
-    /* TODO: Setup defaults */
-    return readYamlFile(appConfigYamlPath);
+  .then(() => fs.ensureDir(logDir))
+  .then(() => fs.exists(appConfigYamlPath))
+  .then((exists) => {
+    if (!exists) return copyFile('./config.yaml', appConfigYamlPath);
+    return Promise.resolve();
   })
+  .then(() => readYamlFile(appConfigYamlPath))
   .then((config: AppConfiguration) => {
     let logLevelInvalid = false;
 

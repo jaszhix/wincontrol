@@ -3,7 +3,7 @@
     "esModuleInterop": true,
     "module": "commonjs",
     "outDir": "./dist",
-    "baseUrl": "src",
+    "baseUrl": "./src",
     "sourceMap": true,
     "declaration": false,
     "moduleResolution": "node",
@@ -13,5 +13,11 @@
     "typeRoots" : ["./node_modules/@types", "./types"],
     "resolveJsonModule": true
   },
+  "include": [
+    "src",
+  ],
+  "exclude": [
+    "build.ts"
+  ],
   "compileOnSave": true
 }
