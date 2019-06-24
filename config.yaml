@@ -1,5 +1,7 @@
 # Example configuration
 # This assumes the host has 14 cores. Logical (HT) cores should be excluded as they are automatically accounted for.
+# See `ProcessConfiguration` at https://github.com/jaszhix/wincontrol/blob/master/types/wincontrol/index.d.ts
+# for all possible configuration options.
 
 interval: 120000
 logging: true

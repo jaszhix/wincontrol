@@ -10,66 +10,13 @@ import Struct from 'ref-struct';
 import wchar from 'ref-wchar';
 
 import log from './log';
-
-// Required by QueryFullProcessImageName
-// https://docs.microsoft.com/en-us/windows/desktop/ProcThread/process-security-and-access-rights
-const PROCESS_ALL_ACCESS = (0x000F0000/* L */ | 0x00100000/* L  */| 0xFFF);
-const PROCESS_SET_INFORMATION = 0x0200;
-const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-const THREAD_QUERY_INFORMATION = 0x0040;
-const THREAD_SET_INFORMATION = 0x0020;
-const MONITOR_DEFAULTTOPRIMARY = 1;
-
-enum PROCESS_INFORMATION_CLASS {
-  ProcessBasicInformation = 0,
-  ProcessQuotaLimits,
-  ProcessIoCounters,
-  ProcessVmCounters,
-  ProcessTimes,
-  ProcessBasePriority,
-  ProcessRaisePriority,
-  ProcessDebugPort,
-  ProcessExceptionPort,
-  ProcessAccessToken,
-  ProcessLdtInformation,
-  ProcessLdtSize,
-  ProcessDefaultHardErrorMode,
-  ProcessIoPortHandlers,
-  ProcessPooledUsageAndLimits,
-  ProcessWorkingSetWatch,
-  ProcessUserModeIOPL,
-  ProcessEnableAlignmentFaultFixup,
-  ProcessPriorityClass,
-  ProcessWx86Information,
-  ProcessHandleCount,
-  ProcessAffinityMask,
-  ProcessPriorityBoost,
-  ProcessDeviceMap,
-  ProcessSessionInformation,
-  ProcessForegroundInformation,
-  ProcessWow64Information,
-  ProcessImageFileName,
-  ProcessLUIDDeviceMapsEnabled,
-  ProcessBreakOnTermination,
-  ProcessDebugObjectHandle,
-  ProcessDebugFlags,
-  ProcessHandleTracing,
-  ProcessIoPriority,
-  ProcessExecuteFlags,
-  ProcessResourceManagement,
-  ProcessCookie,
-  ProcessImageInformation,
-  ProcessCycleTime,
-  ProcessPagePriority,
-  ProcessInstrumentationCallback,
-  ProcessThreadStackAllocation,
-  ProcessWorkingSetWatchEx,
-  ProcessImageFileNameWin32,
-  ProcessImageFileMapping,
-  ProcessAffinityUpdateMode,
-  ProcessMemoryAllocationMode,
-  MaxProcessInfoClass
-}
+import {
+  PROCESS_ALL_ACCESS,
+  PROCESS_SET_INFORMATION,
+  PROCESS_QUERY_LIMITED_INFORMATION,
+  MONITOR_DEFAULTTOPRIMARY,
+  PROCESS_INFORMATION_CLASS,
+} from './constants';
 
 const MemoryPriorityInformation = Struct({
   MemoryPriority: 'uint'
@@ -102,6 +49,10 @@ const MonitorInfoType = ref.refType(MonitorInfo);
 const user32 = new Library('User32.dll', {
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms633505(v=vs.85).aspx
   GetForegroundWindow: ['pointer', []],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-gettopwindow
+  // GetTopWindow: ['pointer', ['pointer']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindow
+  // GetWindow: ['pointer', ['pointer', 'uint']],
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms633520(v=vs.85).aspx
   GetWindowTextW: ['int', ['pointer', 'pointer', 'int']],
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms633521(v=vs.85).aspx
@@ -111,11 +62,19 @@ const user32 = new Library('User32.dll', {
   // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowrect
   GetWindowRect: ['int', ['pointer', RectType]],
 
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-iswindowvisible
   IsWindowVisible: ['int', ['pointer']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-iswindowenabled
+  // IsWindowEnabled: ['int', ['pointer']],
 
-  EnumWindows: ['int', ['pointer', 'pointer'] ],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-enumwindows
+  EnumWindows: ['int', ['pointer', 'pointer']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-enumthreadwindows
+  // EnumThreadWindows: ['int', ['pointer', 'pointer', 'ulong *']],
 
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-monitorfromwindow
   MonitorFromWindow: ['pointer', ['pointer', 'int']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmonitorinfoa
   GetMonitorInfoA: ['int', ['pointer', MonitorInfoType]]
 });
 
@@ -128,10 +87,14 @@ const kernel32 = new Library('kernel32', {
   // https://msdn.microsoft.com/en-us/library/windows/desktop/ms684919(v=vs.85).aspx
   QueryFullProcessImageNameW: ['int', ['pointer', 'uint32', 'pointer', 'pointer']],
 
+  // https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-getpriorityclass
   GetPriorityClass: ['uint32', ['pointer']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-setpriorityclass
   SetPriorityClass: ['int', ['pointer', 'uint32']],
 
+  // https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-queryprocessaffinityupdatemode
   QueryProcessAffinityUpdateMode: ['int', ['pointer', 'uint32']],
+  // https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-setprocessaffinityupdatemode
   SetProcessAffinityUpdateMode: ['int', ['pointer', 'uint32']],
 
   // https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes--0-499-
@@ -152,7 +115,8 @@ const kernel32 = new Library('kernel32', {
 const ntdll = new Library('ntdll.dll', {
   // Undocumented?
   NtSetInformationProcess: ['ulong', ['pointer', 'int' /* enum */, 'int *', 'ulong']],
-  NtSuspendProcess: ['int', ['pointer']]
+  NtSuspendProcess: ['int', ['pointer']],
+  NtResumeProcess: ['int', ['pointer']]
 });
 
 const getHandleForProcessId = function(id, permission = PROCESS_QUERY_LIMITED_INFORMATION) {
@@ -202,8 +166,6 @@ const getWindowInfo = function(windowHandle): WindowInfo {
   let isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
     && rect.bottom === monitorInfo.rcMonitor.bottom;
 
-  // Get memory address of the window handle as the "window ID"
-  const windowId = ref.address(windowHandle);
   // Get the window text length in "characters", to create the buffer
   const windowTextLength = user32.GetWindowTextLengthW(windowHandle);
   // Allocate a buffer large enough to hold the window text as "Unicode" (UTF-16) characters (using ref-wchar)
@@ -250,13 +212,27 @@ const getWindowInfo = function(windowHandle): WindowInfo {
 
   return {
     title: windowTitle,
-    id: windowId,
-    app: processName,
+    name: processName,
     pid: processId,
     priorityClass,
     visible: user32.IsWindowVisible(windowHandle) > 0,
     isFullscreen,
     rect,
+  };
+};
+
+const getBasicWindowInfo = function(windowHandle): WindowInfo {
+  const rect: WindowRect = getWindowRect(windowHandle);
+  const monitorInfo = getWindowMonitorInfo(windowHandle);
+  const isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
+    && rect.bottom === monitorInfo.rcMonitor.bottom;
+  const processIdBuffer = ref.alloc('uint32');
+
+  user32.GetWindowThreadProcessId(windowHandle, processIdBuffer);
+
+  return {
+    pid: ref.get(processIdBuffer),
+    isFullscreen,
   };
 };
 
@@ -278,7 +254,7 @@ const getWindows = function(cb): void {
 };
 
 const getActiveWindow = function(): WindowInfo {
-  return getWindowInfo(user32.GetForegroundWindow());
+  return getBasicWindowInfo(user32.GetForegroundWindow());
 };
 
 const getPriorityClass = function(id: number): number {
@@ -402,6 +378,20 @@ const suspendProcess = function(id: number): boolean {
   return true;
 };
 
+const resumeProcess = function(id: number): boolean {
+  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const status = ntdll.NtResumeProcess(handle);
+
+  kernel32.CloseHandle(handle);
+
+  if (status) {
+    log.warning('Failed to resume process:', id, kernel32.GetLastError(), status);
+    return false;
+  }
+
+  return true;
+};
+
 export {
   getActiveWindow,
   getWindows,
@@ -412,5 +402,6 @@ export {
   setPagePriority,
   setIOPriority,
   terminateProcess,
-  suspendProcess
+  suspendProcess,
+  resumeProcess,
 };

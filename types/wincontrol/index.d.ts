@@ -12,6 +12,7 @@ declare interface ProcessConfiguration {
   ioPriority?: number;
   terminationDelay?: number;
   suspensionDelay?: number;
+  resumeDelay?: number;
   processes: string[];
   disableIfRunning: string[];
 }
@@ -35,14 +36,13 @@ declare interface WindowRect {
 }
 
 declare interface WindowInfo {
-  title: string;
-  id: number;
-  app: string;
+  title?: string;
+  name?: string;
   pid: number;
-  priorityClass: number;
-  visible: boolean;
+  priorityClass?: number;
+  visible?: boolean;
   isFullscreen: boolean;
-  rect: WindowRect;
+  rect?: WindowRect;
 }
 
 declare interface PowerShellProcessTime {

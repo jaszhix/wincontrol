@@ -23,7 +23,8 @@ import {
   setPagePriority,
   setIOPriority,
   terminateProcess,
-  suspendProcess
+  suspendProcess,
+  resumeProcess,
 } from './nt';
 import {getPhysicalCoreCount} from './utils';
 import {each, find} from './lang';
@@ -170,6 +171,7 @@ const enforceAffinityPolicy = (): void => {
       let ioPriority: number;
       let terminationDelay: number;
       let suspensionDelay: number;
+      let resumeDelay: number;
       let processAffinity: number;
       let systemAffinity: number;
 
@@ -250,6 +252,10 @@ const enforceAffinityPolicy = (): void => {
             logAttributes.push(`suspension delay: ${suspensionDelay}`);
           }
 
+          if (resumeDelay = profile.resumeDelay) {
+            logAttributes.push(`resume delay: ${resumeDelay}`);
+          }
+
           if (terminationDelay = profile.terminationDelay) {
             logAttributes.push(`termination delay: ${terminationDelay}`);
           }
@@ -278,6 +284,11 @@ const enforceAffinityPolicy = (): void => {
 
       if (suspensionDelay != null) {
         setTimeout(() => suspendProcess(Id), suspensionDelay);
+        continue;
+      }
+
+      if (resumeDelay != null) {
+        setTimeout(() => resumeProcess(Id), resumeDelay);
         continue;
       }
 

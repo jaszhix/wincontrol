@@ -51,6 +51,76 @@ const LogLevel  = [
   'ERROR'
 ];
 
+// Required by QueryFullProcessImageName
+// https://docs.microsoft.com/en-us/windows/desktop/ProcThread/process-security-and-access-rights
+const PROCESS_ALL_ACCESS = (0x000F0000/* L */ | 0x00100000/* L  */| 0xFFF);
+const PROCESS_SET_INFORMATION = 0x0200;
+const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+const THREAD_QUERY_INFORMATION = 0x0040;
+const THREAD_SET_INFORMATION = 0x0020;
+const MONITOR_DEFAULTTOPRIMARY = 1;
+
+enum PROCESS_INFORMATION_CLASS {
+  ProcessBasicInformation = 0,
+  ProcessQuotaLimits,
+  ProcessIoCounters,
+  ProcessVmCounters,
+  ProcessTimes,
+  ProcessBasePriority,
+  ProcessRaisePriority,
+  ProcessDebugPort,
+  ProcessExceptionPort,
+  ProcessAccessToken,
+  ProcessLdtInformation,
+  ProcessLdtSize,
+  ProcessDefaultHardErrorMode,
+  ProcessIoPortHandlers,
+  ProcessPooledUsageAndLimits,
+  ProcessWorkingSetWatch,
+  ProcessUserModeIOPL,
+  ProcessEnableAlignmentFaultFixup,
+  ProcessPriorityClass,
+  ProcessWx86Information,
+  ProcessHandleCount,
+  ProcessAffinityMask,
+  ProcessPriorityBoost,
+  ProcessDeviceMap,
+  ProcessSessionInformation,
+  ProcessForegroundInformation,
+  ProcessWow64Information,
+  ProcessImageFileName,
+  ProcessLUIDDeviceMapsEnabled,
+  ProcessBreakOnTermination,
+  ProcessDebugObjectHandle,
+  ProcessDebugFlags,
+  ProcessHandleTracing,
+  ProcessIoPriority,
+  ProcessExecuteFlags,
+  ProcessResourceManagement,
+  ProcessCookie,
+  ProcessImageInformation,
+  ProcessCycleTime,
+  ProcessPagePriority,
+  ProcessInstrumentationCallback,
+  ProcessThreadStackAllocation,
+  ProcessWorkingSetWatchEx,
+  ProcessImageFileNameWin32,
+  ProcessImageFileMapping,
+  ProcessAffinityUpdateMode,
+  ProcessMemoryAllocationMode,
+  MaxProcessInfoClass
+}
+
+enum GW {
+  HWNDFIRST = 0,
+  HWNDLAST,
+  HWNDNEXT,
+  HWNDPREV,
+  OWNER,
+  CHILD,
+  ENABLEDPOPUP,
+}
+
 export {
   psCommand,
   execOptions,
@@ -62,5 +132,13 @@ export {
   cpuPriorityMap,
   pagePriorityMap,
   ioPriorityMap,
-  LogLevel
+  LogLevel,
+  PROCESS_ALL_ACCESS,
+  PROCESS_SET_INFORMATION,
+  PROCESS_QUERY_LIMITED_INFORMATION,
+  THREAD_QUERY_INFORMATION,
+  THREAD_SET_INFORMATION,
+  MONITOR_DEFAULTTOPRIMARY,
+  PROCESS_INFORMATION_CLASS,
+  GW
 };
