@@ -40,6 +40,9 @@ let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
 let processesConfigured = [];
+let mtime: number = 0;
+let enforcePolicy: () => void;
+let loadConfiguration: () => void;
 
 const getAffinityForCoreRanges = (cores: Array<number[]>): number => {
   let n: number = 0;
@@ -135,7 +138,30 @@ const attemptProcessModification = (func: Function, id: number, value: number): 
   return true;
 }
 
-const enforceAffinityPolicy = (): void => {
+const runRoutine = (checkConfigChange = true): void => {
+  fs.stat(appConfigYamlPath).then((info) => {
+    // Compare the app config's cached mtime with the current mtime, and reload everything if a change has occurred.
+    if (checkConfigChange && appConfig.detectConfigChange && mtime && info.mtimeMs !== mtime) {
+      if (timeout) clearTimeout(timeout);
+
+      timeout = null;
+      appConfig = null;
+      processesConfigured = [];
+
+      log.open();
+      log.info('Configuration changed, reloading...');
+      log.close();
+
+      loadConfiguration();
+    } else {
+      enforcePolicy();
+    }
+
+    mtime = info.mtimeMs;
+  });
+}
+
+enforcePolicy = (): void => {
   if (timeout) clearTimeout(timeout);
 
   log.open();
@@ -319,7 +345,7 @@ const enforceAffinityPolicy = (): void => {
     log.info(`Finished process enforcement in ${Date.now() - now}ms`);
     log.close();
 
-    timeout = setTimeout(enforceAffinityPolicy, interval);
+    timeout = setTimeout(runRoutine, interval);
   });
 };
 
@@ -327,7 +353,7 @@ const init = () => {
   // Lower the priority of wincontrol to idle
   setPriorityClass(process.pid, cpuPriorityMap.idle);
 
-  log.info('====================== New session ======================');
+  log.info('====================== Config info ======================');
   log.info(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
   log.info(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
   log.info(`Physical core count: ${physicalCoreCount}`);
@@ -338,59 +364,64 @@ const init = () => {
   log.info('=========================================================');
   log.close();
 
-  enforceAffinityPolicy();
+  runRoutine(false);
 
   console.log('Initialized');
 };
 
-getPhysicalCoreCount()
-  .then((count) => {
-    useHT = count !== coreCount;
-    physicalCoreCount = count;
-    fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]]);
-    return fs.ensureDir(appDir);
-  })
-  .then(() => fs.ensureDir(logDir))
-  .then(() => fs.exists(appConfigYamlPath))
-  .then((exists) => {
-    if (!exists) return copyFile('./config.yaml', appConfigYamlPath);
-    return Promise.resolve();
-  })
-  .then(() => readYamlFile(appConfigYamlPath))
-  .then((config: AppConfiguration) => {
-    let logLevelInvalid = false;
+loadConfiguration = (): void => {
+  getPhysicalCoreCount()
+    .then((count) => {
+      useHT = count !== coreCount;
+      physicalCoreCount = count;
+      fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]]);
+      return fs.ensureDir(appDir);
+    })
+    .then(() => fs.ensureDir(logDir))
+    .then(() => fs.exists(appConfigYamlPath))
+    .then((exists) => {
+      if (!exists) return copyFile('./config.yaml', appConfigYamlPath);
+      return Promise.resolve();
+    })
+    .then(() => readYamlFile(appConfigYamlPath))
+    .then((config: AppConfiguration) => {
+      let logLevelInvalid = false;
 
-    if (!config) {
-      config = {
-        interval: 120000,
-        logging: true,
-        logPerProcessAndRule: true,
-        logLevel: 'info',
-        fullscreenPriority: true,
-        profiles: [],
-        affinities: []
-      };
-    }
+      if (!config) {
+        config = {
+          interval: 120000,
+          logging: true,
+          logPerProcessAndRule: true,
+          logLevel: 'info',
+          detectConfigChange: true,
+          fullscreenPriority: true,
+          profiles: [],
+          affinities: []
+        };
+      }
 
-    log.enabled = config.logging;
+      log.enabled = config.logging;
 
-    if (log.enabled && config.logLevel) {
-      let index = LogLevel.indexOf(config.logLevel.toUpperCase());
-      if (index > -1) log.logLevel = index;
-      else logLevelInvalid = true;
-    }
+      if (log.enabled && config.logLevel) {
+        let index = LogLevel.indexOf(config.logLevel.toUpperCase());
+        if (index > -1) log.logLevel = index;
+        else logLevelInvalid = true;
+      }
 
-    log.open();
+      log.open();
 
-    if (logLevelInvalid) log.error(`Invalid configuration: ${config.logLevel} is not a valid log level.`)
+      if (logLevelInvalid) log.error(`Invalid configuration: ${config.logLevel} is not a valid log level.`)
 
-    appConfig = config;
+      appConfig = config;
 
-    parseProfilesConfig(config.profiles);
+      parseProfilesConfig(config.profiles);
 
-    init();
-  })
-  .catch((e) => {
-    log.error(e);
-    log.close();
-  });
+      init();
+    })
+    .catch((e) => {
+      log.error(e);
+      log.close();
+    });
+}
+
+loadConfiguration();

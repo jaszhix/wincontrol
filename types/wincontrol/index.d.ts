@@ -22,6 +22,7 @@ declare interface AppConfiguration {
   logging?: boolean;
   logPerProcessAndRule?: boolean;
   logLevel?: string;
+  detectConfigChange?: boolean;
   fullscreenPriority?: boolean;
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
