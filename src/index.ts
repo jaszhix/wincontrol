@@ -7,6 +7,7 @@ import {
   appDir,
   logDir,
   appConfigYamlPath,
+  falsePositiveFullscreenApps,
   coreCount,
   cpuPriorityMap,
   pagePriorityMap,
@@ -27,7 +28,7 @@ import {
   resumeProcess,
 } from './nt';
 import {getPhysicalCoreCount, copyFile} from './utils';
-import {each, find} from './lang';
+import {find} from './lang';
 import log from './log';
 
 let physicalCoreCount: number;
@@ -39,6 +40,7 @@ let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
+let profileNames = [];
 let processesConfigured = [];
 let mtime: number = 0;
 let enforcePolicy: () => void;
@@ -93,46 +95,95 @@ const readYamlFile = (path: string): Promise<any> => {
   });
 }
 
-const parseProfilesConfig = (profiles: ProcessConfiguration[]): ProcessConfiguration[] => {
-  for (let i = 0, len = profiles.length; i < len; i++) {
-    const profile = profiles[i];
-    const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
-    const {cpuPriority, pagePriority, ioPriority} = profile;
+const parseProfile = (profile, index, isRootProfile = true) => {
+  const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
+  const {name, cpuPriority, pagePriority, ioPriority} = profile;
+
+  if (isRootProfile) {
+    if (!name) {
+      throw new Error(`[Profile #${index + 1}] Misconfiguration found - missing required property \`name\`.`);
+    }
+
+    if (profileNames.indexOf(name) > -1) {
+      throw new Error(`[${name}] Misconfiguration found - the \`name\` property must be a unique identifier.`);
+    }
+
+    profileNames.push(name);
 
     // Strip process names of file extension notation as the Get-Process output doesn't have it.
     if (Array.isArray(profile.processes)) {
       for (let i = 0, len = profile.processes.length; i < len; i++) {
-        let name = profile.processes[i].toLowerCase().replace(/\.exe$/, '');
+        let processName = profile.processes[i].toLowerCase().replace(/\.exe$/, '');
 
-        profile.processes[i] = name;
+        profile.processes[i] = processName;
 
-        if (processesConfigured.indexOf(name) === -1) {
-          processesConfigured.push(name);
+        if (processesConfigured.indexOf(processName) > -1) {
+          throw new Error(
+            `[${name}] Misconfiguration found - the process \`${processName}\` is either duplicated in a profile or handled in multiple profiles. `
+            + 'A process can only be handled by one profile.'
+          );
         }
+
+        processesConfigured.push(processName);
       }
+    } else {
+      throw new Error(`[${name}] Misconfiguration found - missing required property \`processes\`.`);
     }
+  } else if (profile.processes) {
+    throw new Error(`[${name}] Misconfiguration found - child profiles cannot have a \`processes\` property.`);
+  }
 
-    if (Array.isArray(profile.disableIfRunning)) {
-      for (let i = 0, len = profile.disableIfRunning.length; i < len; i++) {
-        profile.disableIfRunning[i] = profile.disableIfRunning[i].toLowerCase().replace(/\.exe$/, '');
-      }
+  if (Array.isArray(profile.disableIfRunning)) {
+    for (let i = 0, len = profile.disableIfRunning.length; i < len; i++) {
+      profile.disableIfRunning[i] = profile.disableIfRunning[i].toLowerCase().replace(/\.exe$/, '');
     }
+  }
 
-    if (affinity) {
-      Object.assign(profile, {
-        affinity: getAffinityForCoreRanges(affinity.ranges),
-        affinityName: affinity.name,
-      });
-    }
-
+  if (affinity) {
     Object.assign(profile, {
-      cpuPriority: cpuPriority != null ? cpuPriorityMap[cpuPriority] : undefined,
-      pagePriority: pagePriority != null ? pagePriorityMap[pagePriority] : undefined,
-      ioPriority: ioPriority != null ? ioPriorityMap[ioPriority] : undefined,
+      affinity: getAffinityForCoreRanges(affinity.ranges),
+      affinityName: affinity.name,
     });
   }
 
-  return profiles;
+  Object.assign(profile, {
+    cpuPriority: cpuPriority != null ? cpuPriorityMap[cpuPriority] : undefined,
+    pagePriority: pagePriority != null ? pagePriorityMap[pagePriority] : undefined,
+    ioPriority: ioPriority != null ? ioPriorityMap[ioPriority] : undefined,
+  });
+
+  return profile;
+}
+
+const parseProfilesConfig = (appConfig: AppConfiguration): void => {
+  const {profiles} = appConfig;
+  const results = [];
+  const endResults = [];
+
+  for (let i = 0, len = profiles.length; i < len; i++) {
+    const profile = parseProfile(profiles[i], i, true);
+
+    // Move profiles containing the fullscreenActiveOverride property to the end of the results array.
+    if (profile.fullscreenActiveOverride) {
+      let keys = Object.keys(profile.fullscreenActiveOverride);
+
+      parseProfile(profile.fullscreenActiveOverride, i, false);
+
+      for (let i = 0, len = keys.length; i < len; i++) {
+        let key = keys[i];
+
+        if (profile[key] == null) {
+          throw new Error(`[${profile.name}] \`fullscreenActiveOverride\` child cannot have keys the parent does not have.`);
+        }
+      }
+
+      endResults.push(profile);
+    } else {
+      results.push(profile);
+    }
+  }
+
+  appConfig.profiles = results.concat(endResults);
 }
 
 const attemptProcessModification = (func: Function, id: number, value: number): boolean => {
@@ -152,6 +203,7 @@ const runRoutine = (checkConfigChange = true): void => {
 
       timeout = null;
       appConfig = null;
+      profileNames = [];
       processesConfigured = [];
 
       log.open();
@@ -178,8 +230,14 @@ enforcePolicy = (): void => {
     const activeWindow = getActiveWindow();
     const processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
     const {logPerProcessAndRule} = appConfig;
+    let isValidActiveFullscreenApp = false;
     let previousProcessName: string;
     let previousProfile: ProcessConfiguration;
+
+    if (activeWindow.isFullscreen) {
+      const activeProcess = find(processList, (item) => activeWindow.pid === item.Id);
+      isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.Name.toLowerCase()) === -1;
+    }
 
     for (let i = 0, len = processList.length; i < len; i++) {
       let ps = processList[i];
@@ -194,7 +252,7 @@ enforcePolicy = (): void => {
       if (failedProcesses.indexOf(Id) > -1 && Id !== fullscreenOptimizedPid) continue;
 
       let isActive = Id === activeWindow.pid;
-      let usePerformancePriorities = isActive && activeWindow.isFullscreen && Name !== 'explorer';
+      let usePerformancePriorities = isActive && isValidActiveFullscreenApp;
       let isFullscreenOptimized = fullscreenOptimizedPid && Id === fullscreenOptimizedPid;
       let fullscreenPriorityBoostAffected = false;
       let affinity: number;
@@ -211,11 +269,21 @@ enforcePolicy = (): void => {
 
       for (let i = 0, len = profiles.length; i < len; i++) {
         let profile = profiles[i];
-        let processMatched = profile.processes.indexOf(Name) > -1;
+        let {name, processes, fullscreenActiveOverride} = profile;
+
+        let processMatched = processes.indexOf(Name) > -1;
+
+        // fullscreenActiveOverride is an alternate child profile that will be used if any fullscreen application is currently
+        // active with the fullscreen optimization applied. To ensure this check is accurate, profiles containing this property
+        // are moved to the end of the array.
+        if (appConfig.fullscreenPriority && processMatched && fullscreenActiveOverride && isValidActiveFullscreenApp) {
+          name += ` -> ${fullscreenActiveOverride.name ? fullscreenActiveOverride.name : 'fullscreenActiveOverride'}`;
+          profile = Object.assign({}, profile, fullscreenActiveOverride);
+        }
 
         if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
           let {disableIfRunning} = profile;
-          let attributesString = `[${profile.name}] ${Name} (${Id}): `;
+          let attributesString = `[${name}] ${Name} (${Id}): `;
           let logAttributes = [];
           let shouldLog = !logPerProcessAndRule || previousProcessName !== Name || previousProfile !== profile;
 
@@ -360,6 +428,7 @@ const init = () => {
   setPriorityClass(process.pid, cpuPriorityMap.idle);
 
   log.info('====================== Config info ======================');
+  log.info(`Configuration file: ${appConfigYamlPath}`);
   log.info(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
   log.info(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
   log.info(`Physical core count: ${physicalCoreCount}`);
@@ -420,7 +489,7 @@ loadConfiguration = (): void => {
 
       appConfig = config;
 
-      parseProfilesConfig(config.profiles);
+      parseProfilesConfig(appConfig);
 
       init();
     })

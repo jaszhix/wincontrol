@@ -62,7 +62,6 @@ class Log {
 
       for (let i = 0; i < args.length; i++) {
         if (args[i] instanceof Error) {
-          argsString += `${args[i].message}${EOL}`;
           argsString += `${args[i].stack}${EOL}`;
           continue;
         }

@@ -4,7 +4,7 @@ declare interface AffinityConfiguration {
 }
 
 declare interface ProcessConfiguration {
-  name: string;
+  name?: string;
   affinity?: number;
   affinityName?: number;
   cpuPriority?: number;
@@ -13,8 +13,9 @@ declare interface ProcessConfiguration {
   terminationDelay?: number;
   suspensionDelay?: number;
   resumeDelay?: number;
-  processes: string[];
-  disableIfRunning: string[];
+  fullscreenActiveOverride?: ProcessConfiguration;
+  processes?: string[];
+  disableIfRunning?: string[];
 }
 
 declare interface AppConfiguration {
