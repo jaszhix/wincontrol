@@ -100,17 +100,23 @@ const parseProfilesConfig = (profiles: ProcessConfiguration[]): ProcessConfigura
     const {cpuPriority, pagePriority, ioPriority} = profile;
 
     // Strip process names of file extension notation as the Get-Process output doesn't have it.
-    each(profile.processes, (name, i) => {
-      name = name.toLowerCase().replace(/\.exe$/, '');
-      profile.processes[i] = name;
+    if (Array.isArray(profile.processes)) {
+      for (let i = 0, len = profile.processes.length; i < len; i++) {
+        let name = profile.processes[i].toLowerCase().replace(/\.exe$/, '');
 
-      if (processesConfigured.indexOf(name) === -1) {
-        processesConfigured.push(name);
+        profile.processes[i] = name;
+
+        if (processesConfigured.indexOf(name) === -1) {
+          processesConfigured.push(name);
+        }
       }
-    });
-    each(profile.disableIfRunning, (name, i) => {
-      profile.disableIfRunning[i] = name.toLowerCase().replace(/\.exe$/, '');
-    });
+    }
+
+    if (Array.isArray(profile.disableIfRunning)) {
+      for (let i = 0, len = profile.disableIfRunning.length; i < len; i++) {
+        profile.disableIfRunning[i] = profile.disableIfRunning[i].toLowerCase().replace(/\.exe$/, '');
+      }
+    }
 
     if (affinity) {
       Object.assign(profile, {
