@@ -287,7 +287,7 @@ enforcePolicy = (): void => {
       isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.Name.toLowerCase()) === -1;
     }
 
-    if (activeProcess) console.log(activeProcess.Name);
+    if (detailedLogging && activeProcess) log.info(`Active window: ${activeProcess.Name}`);
 
     for (let i = 0, len = processList.length; i < len; i++) {
       let ps = processList[i];
