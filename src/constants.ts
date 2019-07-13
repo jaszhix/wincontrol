@@ -20,6 +20,8 @@ const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
 const logDir: string = `${appDir}\\logs`;
 const appConfigYamlPath: string = `${appDir}\\config.yaml`;
 
+const ifConditionOptions = ['running', 'fullscreenOverrideActive'];
+
 // Fullscreen detection needs more work, in the mean time, ignore the obvious cases.
 const falsePositiveFullscreenApps = [
   'explorer', // occurs when the thumbnail menu in the taskbar is focused
@@ -135,6 +137,7 @@ export {
   appDir,
   logDir,
   appConfigYamlPath,
+  ifConditionOptions,
   falsePositiveFullscreenApps,
   cpuPriorityMap,
   pagePriorityMap,

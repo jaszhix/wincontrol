@@ -39,16 +39,38 @@ profiles:
     processes:
       - WindowsInternal.ComposableShell.Experiences.TextInput.InputApp
 
-  # Example using disableIfRunning. OfficeClickToRun is only needed while an Office app runs,
+  # Example using the running condition. OfficeClickToRun is only needed while an Office app runs,
   # but otherwise consumes CPU resources in the background.
   - name: terminateClickToRun
     terminationDelay: 1
-    disableIfRunning:
-      - EXCEL
-      - MSACCESS
-      - MSPUB
-      - OUTLOOK
-      - POWERPNT
-      - WINWORD
+    if:
+      condition: running
+      forProcesses:
+        - EXCEL
+        - MSACCESS
+        - MSPUB
+        - OUTLOOK
+        - POWERPNT
+        - WINWORD
+      then: disable
     processes:
       - OfficeClickToRun
+
+  # Example using the fullscreenOverrideActive condition. If focused fullscreen applications are
+  # given high priority (fullscreenPriority option), and one currently is focused, then give the
+  # Steam process lower priority.
+  - name: steam
+    affinity: foregroundMedium
+    cpuPriority: belowNormal
+    pagePriority: belowNormal
+    ioPriority: low
+    processes:
+      - Steam
+    if:
+      condition: 'fullscreenOverrideActive'
+      # forProcesses: ... also able to restrict this condition to certain applications.
+      then:
+        affinity: suppressed
+        cpuPriority: belowNormal
+        pagePriority: belowNormal
+        ioPriority: belowNormal

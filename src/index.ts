@@ -7,6 +7,7 @@ import {
   appDir,
   logDir,
   appConfigYamlPath,
+  ifConditionOptions,
   falsePositiveFullscreenApps,
   coreCount,
   cpuPriorityMap,
@@ -95,17 +96,17 @@ const readYamlFile = (path: string): Promise<any> => {
   });
 }
 
-const parseProfile = (profile, index, isRootProfile = true) => {
+const validateAndParseProfile = (profile, index, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
   const {name, cpuPriority, pagePriority, ioPriority} = profile;
 
   if (isRootProfile) {
     if (!name) {
-      throw new Error(`[Profile #${index + 1}] Misconfiguration found - missing required property \`name\`.`);
+      throw new Error(`[Profile #${index + 1}] Misconfiguration found - missing required property 'name'.`);
     }
 
     if (profileNames.indexOf(name) > -1) {
-      throw new Error(`[${name}] Misconfiguration found - the \`name\` property must be a unique identifier.`);
+      throw new Error(`[${name}] Misconfiguration found - the 'name' property must be a unique identifier.`);
     }
 
     profileNames.push(name);
@@ -119,7 +120,7 @@ const parseProfile = (profile, index, isRootProfile = true) => {
 
         if (processesConfigured.indexOf(processName) > -1) {
           throw new Error(
-            `[${name}] Misconfiguration found - the process \`${processName}\` is either duplicated in a profile or handled in multiple profiles. `
+            `[${name}] Misconfiguration found - the process '${processName}' is either duplicated in a profile or handled in multiple profiles. `
             + 'A process can only be handled by one profile.'
           );
         }
@@ -127,15 +128,73 @@ const parseProfile = (profile, index, isRootProfile = true) => {
         processesConfigured.push(processName);
       }
     } else {
-      throw new Error(`[${name}] Misconfiguration found - missing required property \`processes\`.`);
+      throw new Error(`[${name}] Misconfiguration found - missing required property 'processes'.`);
     }
-  } else if (profile.processes) {
-    throw new Error(`[${name}] Misconfiguration found - child profiles cannot have a \`processes\` property.`);
-  }
 
-  if (Array.isArray(profile.disableIfRunning)) {
-    for (let i = 0, len = profile.disableIfRunning.length; i < len; i++) {
-      profile.disableIfRunning[i] = profile.disableIfRunning[i].toLowerCase().replace(/\.exe$/, '');
+    if (profile.if) {
+      const thenValueIsString = typeof profile.if.then === 'string';
+      const thenValueIsKeyedObject = typeof profile.if.then === 'object' && !Array.isArray(profile.if.then);
+
+      if (!profile.if.condition) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: required 'condition' property is not defined.`)
+      }
+
+      if (ifConditionOptions.indexOf(profile.if.condition) === -1) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'condition' value is invalid. Possible options are: ${ifConditionOptions.join(', ')}`);
+      }
+
+      if (!profile.if.then) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: required 'then' property is not defined.`)
+      }
+
+      if (!thenValueIsString && !thenValueIsKeyedObject) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: the 'then' value is not a string or keyed object.`);
+      }
+
+      if (thenValueIsString && profile.if.then !== 'disable') {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' is a string, but the value is not 'disable'.`)
+      }
+
+      if (profile.if.forProcesses) {
+        if (!Array.isArray(profile.if.forProcesses)) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration: 'forProcesses' must be an array if defined.`);
+        }
+
+        for (let i = 0, len = profile.if.forProcesses.length; i < len; i++) {
+          if (typeof profile.if.forProcesses[i] !== 'string') {
+            throw new Error(`[${profile.name}] 'if' block misconfiguration: 'forProcesses' must be an array of strings.`);
+          }
+
+          profile.if.forProcesses[i] = profile.if.forProcesses[i].toLowerCase().replace(/\.exe$/, '');
+        }
+      }
+
+      if (profile.if.condition === 'running' && !profile.if.forProcesses) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'condition' value is 'running', but 'forProcesses' is not an array.`);
+      }
+
+      if (thenValueIsKeyedObject) {
+        let keys = Object.keys(profile.if.then);
+
+        validateAndParseProfile(profile.if.then, index, false);
+
+        for (let i = 0, len = keys.length; i < len; i++) {
+          let key = keys[i];
+
+          if (profile[key] == null) {
+            throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' child cannot have keys the parent does not have.`);
+          }
+        }
+      }
+    }
+
+  } else {
+    if (profile.processes) {
+      throw new Error(`[${name}] Misconfiguration found - child profiles cannot have a 'processes' value defined.`);
+    }
+
+    if (profile.if) {
+      throw new Error(`[${name}] Misconfiguration found - child profiles cannot have an 'if' value defined.`);
     }
   }
 
@@ -161,22 +220,10 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
   const endResults = [];
 
   for (let i = 0, len = profiles.length; i < len; i++) {
-    const profile = parseProfile(profiles[i], i, true);
+    const profile = validateAndParseProfile(profiles[i], i, true);
 
-    // Move profiles containing the fullscreenActiveOverride property to the end of the results array.
-    if (profile.fullscreenActiveOverride) {
-      let keys = Object.keys(profile.fullscreenActiveOverride);
-
-      parseProfile(profile.fullscreenActiveOverride, i, false);
-
-      for (let i = 0, len = keys.length; i < len; i++) {
-        let key = keys[i];
-
-        if (profile[key] == null) {
-          throw new Error(`[${profile.name}] \`fullscreenActiveOverride\` child cannot have keys the parent does not have.`);
-        }
-      }
-
+    // Move profiles containing the if property to the end of the results array.
+    if (profile.if) {
       endResults.push(profile);
     } else {
       results.push(profile);
@@ -229,15 +276,18 @@ enforcePolicy = (): void => {
     const {profiles, interval} = appConfig;
     const activeWindow = getActiveWindow();
     const processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
-    const {logPerProcessAndRule} = appConfig;
+    const {detailedLogging} = appConfig;
     let isValidActiveFullscreenApp = false;
     let previousProcessName: string;
     let previousProfile: ProcessConfiguration;
+    let activeProcess;
 
     if (activeWindow.isFullscreen) {
-      const activeProcess = find(processList, (item) => activeWindow.pid === item.Id);
+      activeProcess = find(processList, (item) => activeWindow.pid === item.Id);
       isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.Name.toLowerCase()) === -1;
     }
+
+    if (activeProcess) console.log(activeProcess.Name);
 
     for (let i = 0, len = processList.length; i < len; i++) {
       let ps = processList[i];
@@ -269,28 +319,60 @@ enforcePolicy = (): void => {
 
       for (let i = 0, len = profiles.length; i < len; i++) {
         let profile = profiles[i];
-        let {name, processes, fullscreenActiveOverride} = profile;
+        let {name, processes} = profile;
 
         let processMatched = processes.indexOf(Name) > -1;
 
-        // fullscreenActiveOverride is an alternate child profile that will be used if any fullscreen application is currently
-        // active with the fullscreen optimization applied. To ensure this check is accurate, profiles containing this property
-        // are moved to the end of the array.
-        if (appConfig.fullscreenPriority && processMatched && fullscreenActiveOverride && isValidActiveFullscreenApp) {
-          name += ` -> ${fullscreenActiveOverride.name ? fullscreenActiveOverride.name : 'fullscreenActiveOverride'}`;
-          profile = Object.assign({}, profile, fullscreenActiveOverride);
-        }
-
         if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
-          let {disableIfRunning} = profile;
           let attributesString = `[${name}] ${Name} (${Id}): `;
           let logAttributes = [];
-          let shouldLog = !logPerProcessAndRule || previousProcessName !== Name || previousProfile !== profile;
+          let shouldLog = detailedLogging || previousProcessName !== Name || previousProfile !== profile;
 
-          // Only enforce this profile if the definitions in disableIfRunning are not running.
-          if (disableIfRunning && find(processList, (item) => disableIfRunning.indexOf(item.Name.toLowerCase()) > -1)) {
-            log.info(`Profile will not be enforced due to blacklisted process running: ${Name} (${Id})`);
-            continue;
+          if (profile.if) {
+            let useCondition = false;
+
+            switch (profile.if.condition) {
+              case 'running':
+                if (find(processList, (item) => profile.if.forProcesses.indexOf(item.Name.toLowerCase()) > -1)) {
+                  useCondition = true;
+                }
+                break;
+              case 'fullscreenOverrideActive':
+                if (appConfig.fullscreenPriority && isValidActiveFullscreenApp) {
+                  // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
+                  if (profile.if.forProcesses && profile.if.forProcesses.indexOf(activeProcess.Name.toLowerCase()) === -1) {
+                    break;
+                  }
+
+                  useCondition = true;
+                }
+                break;
+            }
+
+            if (useCondition) {
+              let shouldContinue = false;
+
+              if (detailedLogging) {
+                log.info(
+                  `${attributesString}if -> ${profile.if.condition} -> then -> `
+                  + `${typeof profile.if.then !== 'string' ? 'replace' : profile.if.then} -> true`
+                );
+              }
+
+              switch (true) {
+                // disable (skip) rule enforcement
+                case (profile.if.then === 'disable'):
+                  shouldContinue = true;
+                  break;
+                // replace rule
+                case (typeof profile.if.then === 'object'):
+                  attributesString = `[${name += ` -> ${profile.if.then.name ? profile.if.then.name : 'override'}`}] ${Name} (${Id})`;
+                  profile = Object.assign({}, profile, profile.if.then);
+                  break;
+              }
+
+              if (shouldContinue) continue;
+            }
           }
 
           if (isActive) {
@@ -466,7 +548,7 @@ loadConfiguration = (): void => {
         config = {
           interval: 120000,
           logging: true,
-          logPerProcessAndRule: true,
+          detailedLogging: false,
           logLevel: 'info',
           detectConfigChange: true,
           fullscreenPriority: true,

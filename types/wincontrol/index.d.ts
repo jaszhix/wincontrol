@@ -3,6 +3,12 @@ declare interface AffinityConfiguration {
   ranges: Array<number[]>;
 }
 
+declare interface Conditional {
+  condition: 'running' | 'fullscreenOverrideActive';
+  forProcesses?: string[];
+  then: any; // 'disable' | ProcessConfiguration
+}
+
 declare interface ProcessConfiguration {
   name?: string;
   affinity?: number;
@@ -13,15 +19,14 @@ declare interface ProcessConfiguration {
   terminationDelay?: number;
   suspensionDelay?: number;
   resumeDelay?: number;
-  fullscreenActiveOverride?: ProcessConfiguration;
   processes?: string[];
-  disableIfRunning?: string[];
+  if?: Conditional;
 }
 
 declare interface AppConfiguration {
   interval: number;
   logging?: boolean;
-  logPerProcessAndRule?: boolean;
+  detailedLogging?: boolean;
   logLevel?: string;
   detectConfigChange?: boolean;
   fullscreenPriority?: boolean;
