@@ -4,13 +4,17 @@ import path from 'path';
 import {tryFn} from './lang'
 import {logDir, LogLevel} from './constants';
 
-function processInput (path: string, text: string) {
-  open(path, 'a', 666, function(err, id) {
-    write(id, text, null, 'utf8', function(){
-      close(id, function() {});
+const processInput = (
+  path: string,
+  text: string,
+  cb?: (err: NodeJS.ErrnoException) => void
+) => {
+  open(path, 'a', 666, (err, id) => {
+    write(id, text, null, 'utf8', () => {
+      close(id, cb);
     });
   });
-}
+};
 
 class Log {
   public location: string;
@@ -24,32 +28,16 @@ class Log {
 
   constructor(
     location = logDir,
-    fileNamePrefix = `session-${new Date().toISOString().split('T')[0]}`,
-    enableConsoleLog = false
+    fileNamePrefix = 'session',
+    enableConsoleLog = true
   ) {
     this.location = location;
     this.fileNamePrefix = fileNamePrefix;
     this.enableConsoleLog = enableConsoleLog;
   }
 
-  public open() {
-    if (!this.enabled) return;
-    if (this.lines.length > 0) this.close();
-  }
-
-  public close() {
-    if (!this.enabled) return;
-    const configPath = path.resolve(this.location, `${this.fileNamePrefix}.log`);
-    const {lines} = this;
-    let output = '';
-
-    for (let i = 0, len = lines.length; i < len; i++) {
-      output += lines[i] + EOL;
-    }
-
-    processInput(configPath, output);
-
-    this.lines = [];
+  get fileName() {
+    return `${this.fileNamePrefix}-${new Date().toISOString().split('T')[0]}.log`;
   }
 
   private update(level: number, ...args: any[]) {
@@ -74,18 +62,42 @@ class Log {
     });
   }
 
+  public open() {
+    if (!this.enabled) return;
+    if (this.lines.length > 0) this.close();
+  }
+
+  public close(cb?: (err: NodeJS.ErrnoException) => void) {
+    if (!this.enabled) return;
+
+    const configPath = path.resolve(this.location, this.fileName);
+    const {lines} = this;
+    let output = '';
+
+    for (let i = 0, len = lines.length; i < len; i++) {
+      output += lines[i] + EOL;
+    }
+
+    processInput(configPath, output, cb);
+
+    this.lines = [];
+  }
+
   public info(...args: any[]) {
     if (!this.enabled || this.logLevel > 0) return;
+
     this.update(0, ...args);
   }
 
   public warning(...args: any[]) {
     if (!this.enabled || this.logLevel > 1) return;
+
     this.update(1, ...args);
   }
 
   public error(...args: any[]) {
     if (!this.enabled) return;
+
     this.update(2, ...args);
   }
 }
