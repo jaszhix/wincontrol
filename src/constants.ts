@@ -1,9 +1,5 @@
 import {homedir, cpus} from 'os';
 
-const psCommand = `powershell "Get-Process `
-  + `| Select-Object -Property 'Name','Id','StartTime','Threads','number','TotalProcessorTime' `
-  + `| ConvertTo-Json -Compress"`;
-
 const execOptions: any = {
   windowsHide: true,
   encoding: 'utf8',
@@ -130,7 +126,6 @@ enum GW {
 }
 
 export {
-  psCommand,
   execOptions,
   coreCount,
   homeDir,

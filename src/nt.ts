@@ -212,7 +212,7 @@ const getWindowInfo = function(windowHandle): WindowInfo {
 
   return {
     title: windowTitle,
-    name: processName,
+    name: processName.toLowerCase(),
     pid: processId,
     priorityClass,
     visible: user32.IsWindowVisible(windowHandle) > 0,

@@ -1,9 +1,6 @@
 import fs from 'fs-extra';
-import {exec, ChildProcess} from 'child_process';
-import yaml from 'yaml';
+import {snapshot} from 'process-list';
 import {
-  psCommand,
-  execOptions,
   appDir,
   logDir,
   appConfigYamlPath,
@@ -28,14 +25,18 @@ import {
   suspendProcess,
   resumeProcess,
 } from './nt';
-import {getPhysicalCoreCount, copyFile} from './utils';
+import {
+  getPhysicalCoreCount,
+  copyFile,
+  getAffinityForCoreRanges,
+  readYamlFile
+} from './utils';
 import {find} from './lang';
 import log from './log';
 
 let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
-let childProcess: ChildProcess = null;
 let failedProcesses = [];
 let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
@@ -43,62 +44,17 @@ let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
 let profileNames = [];
 let processesConfigured = [];
+let snapshotArgs = ['pid', 'name'];
 let mtime: number = 0;
-let enforcePolicy: () => void;
+let now: number;
+let enforcePolicy: (processList: any[]) => void;
 let loadConfiguration: () => void;
-
-const getAffinityForCoreRanges = (cores: Array<number[]>): number => {
-  let n: number = 0;
-  let flatCores: number[] = [];
-
-  // Turn the 2D array of core range pairs into a flat array of actual cores
-  for (let i = 0; i < cores.length; i++) {
-    let [start, end] = cores[i];
-
-    if (!end) {
-      flatCores.push(start);
-      continue;
-    }
-
-    while (start <= end) {
-      flatCores.push(start);
-      start++;
-    }
-  }
-
-  // If we are concerned about hyper-threading, also select the logical cores.
-  // This is generally preferred because IPC overhead gets worse when moving between physical cores.
-  if (useHT) {
-    let cores: number[] = flatCores.slice();
-    for (let i = 0; i < cores.length; i++) {
-      let core = cores[i] + (coreCount / 2);
-
-      if (core > coreCount - 1 || cores.indexOf(core) > -1) break;
-
-      flatCores.push(core);
-    }
-  }
-
-  // Do some bit conversion to get the final mask windows expects
-  for (let i = 0; i < flatCores.length; i++) {
-    let mask = (1 << flatCores[i]);
-    if (!n) n = mask;
-    else n ^= mask;
-  }
-  return n;
-};
-
-const readYamlFile = (path: string): Promise<any> => {
-  return new Promise(function(resolve, reject) {
-    fs.readFile(path)
-      .then((data) => resolve(yaml.parse(data.toString())))
-      .catch((e) => reject(e))
-  });
-}
 
 const validateAndParseProfile = (profile, index, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
-  const {name, cpuPriority, pagePriority, ioPriority} = profile;
+  const {name, cpuPriority, pagePriority, ioPriority, cmd} = profile;
+
+  if (cmd && snapshotArgs.length === 2) snapshotArgs.push('cmdline');
 
   if (isRootProfile) {
     if (!name) {
@@ -127,8 +83,10 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
         processesConfigured.push(processName);
       }
-    } else {
+    } else if (!cmd) {
       throw new Error(`[${name}] Misconfiguration found - missing required property 'processes'.`);
+    } else {
+      profile.processes = [];
     }
 
     if (profile.if) {
@@ -200,7 +158,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
   if (affinity) {
     Object.assign(profile, {
-      affinity: getAffinityForCoreRanges(affinity.ranges),
+      affinity: getAffinityForCoreRanges(affinity.ranges, useHT, coreCount),
       affinityName: affinity.name,
     });
   }
@@ -243,6 +201,8 @@ const attemptProcessModification = (func: Function, id: number, value: number): 
 }
 
 const runRoutine = (checkConfigChange = true): void => {
+  now = Date.now();
+
   fs.stat(appConfigYamlPath).then((info) => {
     // Compare the app config's cached mtime with the current mtime, and reload everything if a change has occurred.
     if (checkConfigChange && appConfig.detectConfigChange && mtime && info.mtimeMs !== mtime) {
@@ -250,6 +210,7 @@ const runRoutine = (checkConfigChange = true): void => {
 
       timeout = null;
       appConfig = null;
+      snapshotArgs = ['pid', 'name'];
       profileNames = [];
       processesConfigured = [];
 
@@ -258,251 +219,271 @@ const runRoutine = (checkConfigChange = true): void => {
       log.close();
 
       loadConfiguration();
-    } else {
-      enforcePolicy();
+      return Promise.resolve();
     }
 
     mtime = info.mtimeMs;
-  });
+
+    return snapshot(...snapshotArgs);
+  })
+    .then(enforcePolicy)
+    .catch((err) => log.error(err));
 }
 
-enforcePolicy = (): void => {
+enforcePolicy = (processList): void => {
+  if (!processList) return;
+
+  for (let i = 0, len = processList.length; i < len; i++) {
+    const ps = processList[i];
+    ps.name = ps.name.toLowerCase().replace(/\.exe$/, '');
+  }
+
   if (timeout) clearTimeout(timeout);
 
   log.open();
 
-  childProcess = exec(psCommand, execOptions, (err, stdout, stderr) => {
-    const now = Date.now();
-    const {profiles, interval} = appConfig;
-    const activeWindow = getActiveWindow();
-    const processList: PowerShellProcess[] = JSON.parse(stdout.toString().replace(//g, '').trim());
-    const {detailedLogging} = appConfig;
-    let isValidActiveFullscreenApp = false;
-    let previousProcessName: string;
-    let previousProfile: ProcessConfiguration;
-    let activeProcess;
+  const {profiles, interval} = appConfig;
+  const activeWindow = getActiveWindow();
+  const {detailedLogging} = appConfig;
+  let isValidActiveFullscreenApp = false;
+  let previousProcessName: string;
+  let previousProfile: ProcessConfiguration;
+  let activeProcess;
 
-    if (activeWindow.isFullscreen) {
-      activeProcess = find(processList, (item) => activeWindow.pid === item.Id);
-      isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.Name.toLowerCase()) === -1;
-    }
+  if (activeWindow.isFullscreen) {
+    activeProcess = find(processList, (item) => activeWindow.pid === item.pid);
+    isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.name) === -1;
+  }
 
-    if (detailedLogging && activeProcess) log.info(`Active window: ${activeProcess.Name}`);
+  // Clear the fullscreen optimized pid if the process exited.
+  if (fullscreenOptimizedPid && !find(processList, (item) => item.pid === fullscreenOptimizedPid)) {
+    fullscreenOptimizedPid = 0;
+    fullscreenOriginalState = null;
+  }
 
-    for (let i = 0, len = processList.length; i < len; i++) {
-      let ps = processList[i];
-      let {Id, Name} = ps;
+  if (detailedLogging && activeProcess) log.info(`Active window: ${activeProcess.name}`);
 
-      Name = Name.toLowerCase();
+  for (let i = 0, len = processList.length; i < len; i++) {
+    let ps = processList[i];
+    let {pid, name, cmdline} = ps;
+    let psName = name;
 
-      // If we've ever failed, there's a good chance we don't have correct permissions to modify the process.
-      // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
-      // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
-      // fullscreen priority is applied.
-      if (failedProcesses.indexOf(Id) > -1 && Id !== fullscreenOptimizedPid) continue;
+    // If we've ever failed, there's a good chance we don't have correct permissions to modify the process.
+    // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
+    // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
+    // fullscreen priority is applied.
+    if (failedProcesses.indexOf(pid) > -1 && pid !== fullscreenOptimizedPid) continue;
 
-      let isActive = Id === activeWindow.pid;
-      let usePerformancePriorities = isActive && isValidActiveFullscreenApp;
-      let isFullscreenOptimized = fullscreenOptimizedPid && Id === fullscreenOptimizedPid;
-      let fullscreenPriorityBoostAffected = false;
-      let affinity: number;
-      let cpuPriority: number;
-      let pagePriority: number;
-      let ioPriority: number;
-      let terminationDelay: number;
-      let suspensionDelay: number;
-      let resumeDelay: number;
-      let processAffinity: number;
-      let systemAffinity: number;
+    let isActive = pid === activeWindow.pid;
+    let usePerformancePriorities = isActive && isValidActiveFullscreenApp;
+    let isFullscreenOptimized = fullscreenOptimizedPid && pid === fullscreenOptimizedPid;
+    let fullscreenPriorityBoostAffected = false;
+    let affinity: number;
+    let cpuPriority: number;
+    let pagePriority: number;
+    let ioPriority: number;
+    let terminationDelay: number;
+    let suspensionDelay: number;
+    let resumeDelay: number;
+    let processAffinity: number;
+    let systemAffinity: number;
 
-      if (Id === process.pid || Id === childProcess.pid) continue;
+    if (pid === process.pid) continue;
 
-      for (let i = 0, len = profiles.length; i < len; i++) {
-        let profile = profiles[i];
-        let {name, processes} = profile;
+    for (let i = 0, len = profiles.length; i < len; i++) {
+      let profile = profiles[i];
+      let {name, processes, cmd} = profile;
 
-        let processMatched = processes.indexOf(Name) > -1;
+      let processMatched = processes.indexOf(psName) > -1;
 
-        if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
-          let attributesString = `[${name}] ${Name} (${Id}): `;
-          let logAttributes = [];
-          let shouldLog = detailedLogging || previousProcessName !== Name || previousProfile !== profile;
-
-          if (profile.if) {
-            let useCondition = false;
-
-            switch (profile.if.condition) {
-              case 'running':
-                if (find(processList, (item) => profile.if.forProcesses.indexOf(item.Name.toLowerCase()) > -1)) {
-                  useCondition = true;
-                }
-                break;
-              case 'fullscreenOverrideActive':
-                if (appConfig.fullscreenPriority && isValidActiveFullscreenApp) {
-                  // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
-                  if (profile.if.forProcesses && profile.if.forProcesses.indexOf(activeProcess.Name.toLowerCase()) === -1) {
-                    break;
-                  }
-
-                  useCondition = true;
-                }
-                break;
-            }
-
-            if (useCondition) {
-              let shouldContinue = false;
-
-              if (detailedLogging) {
-                log.info(
-                  `${attributesString}if -> ${profile.if.condition} -> then -> `
-                  + `${typeof profile.if.then !== 'string' ? 'replace' : profile.if.then} -> true`
-                );
-              }
-
-              switch (true) {
-                // disable (skip) rule enforcement
-                case (profile.if.then === 'disable'):
-                  shouldContinue = true;
-                  break;
-                // replace rule
-                case (typeof profile.if.then === 'object'):
-                  attributesString = `[${name += ` -> ${profile.if.then.name ? profile.if.then.name : 'override'}`}] ${Name} (${Id})`;
-                  profile = Object.assign({}, profile, profile.if.then);
-                  break;
-              }
-
-              if (shouldContinue) continue;
-            }
+      if (!processMatched && cmd) {
+        for (let i = 0, len = cmd.length; i < len; i++) {
+          if (cmdline.indexOf(cmd[i]) > -1) {
+            processMatched = true;
+            break;
           }
-
-          if (isActive) {
-            if (profile.affinity && profile.affinity !== fullAffinity) {
-              profile = Object.assign({}, profile, {
-                affinity: fullAffinity,
-              });
-            }
-          }
-
-          // Handle fullscreen priority increase. If the active window is taking up exactly
-          // the dimensions of the primary monitor, then we will give it high priority.
-          // TODO: This doesn't work with some games, so there is more needing to be done
-          // as far as detecting the window/monitor rects.
-          if (appConfig.fullscreenPriority) {
-            switch (true) {
-              case (usePerformancePriorities && !fullscreenOptimizedPid):
-                [processAffinity, systemAffinity] = getProcessorAffinity(Id);
-
-                fullscreenOriginalState = {
-                  cpuPriority: getPriorityClass(Id),
-                  affinity: systemAffinity,
-                };
-
-                profile = Object.assign({}, profile, {
-                  affinity: fullAffinity,
-                  cpuPriority: cpuPriorityMap.high,
-                  pagePriority: pagePriorityMap.normal,
-                  ioPriority: ioPriorityMap.normal,
-                });
-
-                log.info(`Priority boosting fullscreen window ${Name} (${Id})`);
-
-                fullscreenOptimizedPid = Id;
-                fullscreenPriorityBoostAffected = true;
-                break;
-              case (isFullscreenOptimized && !usePerformancePriorities):
-                profile = Object.assign({}, profile, {
-                  affinity: fullscreenOriginalState.affinity,
-                  cpuPriority: fullscreenOriginalState.cpuPriority,
-                  pagePriority: pagePriorityMap.normal,
-                  ioPriority: ioPriorityMap.normal,
-                });
-
-                log.info(`Resetting priority boost for previously fullscreen window ${Name} (${Id})`);
-
-                fullscreenOptimizedPid = 0;
-                fullscreenPriorityBoostAffected = true;
-                fullscreenOriginalState = null;
-                break;
-            }
-          }
-
-          // Stop here if the process doesn't match - the fullscreen priority logic above is
-          // intended to work for all processes.
-          if (!fullscreenPriorityBoostAffected && !processMatched) continue;
-
-          if (suspensionDelay = profile.suspensionDelay) {
-            logAttributes.push(`suspension delay: ${suspensionDelay}`);
-          }
-
-          if (resumeDelay = profile.resumeDelay) {
-            logAttributes.push(`resume delay: ${resumeDelay}`);
-          }
-
-          if (terminationDelay = profile.terminationDelay) {
-            logAttributes.push(`termination delay: ${terminationDelay}`);
-          }
-
-          if (affinity = profile.affinity) {
-            logAttributes.push(`affinity: ${profile.affinityName}`);
-          }
-
-          if (cpuPriority = profile.cpuPriority) {
-            logAttributes.push(`cpuPriority: ${cpuPriorityMap[cpuPriority.toString()]}`);
-          }
-
-          if (pagePriority = profile.pagePriority) {
-            logAttributes.push(`pagePriority: ${pagePriorityMap[pagePriority.toString()]}`);
-          }
-
-          if (ioPriority = profile.ioPriority) {
-            logAttributes.push(`ioPriority: ${ioPriorityMap[ioPriority.toString()]}`);
-          }
-
-          if (shouldLog) log.info(`${attributesString} ${logAttributes.join(', ')}`);
-          previousProfile = profile;
-          break;
         }
       }
 
-      if (suspensionDelay != null) {
-        setTimeout(() => suspendProcess(Id), suspensionDelay);
-        continue;
-      }
+      if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
+        let attributesString = `[${name}] ${psName} (${pid}): `;
+        let logAttributes = [];
+        let shouldLog = detailedLogging || previousProcessName !== psName || previousProfile !== profile;
 
-      if (resumeDelay != null) {
-        setTimeout(() => resumeProcess(Id), resumeDelay);
-        continue;
-      }
+        if (profile.if) {
+          let useCondition = false;
 
-      if (terminationDelay != null) {
-        setTimeout(() => terminateProcess(Id), terminationDelay);
-        continue;
-      }
+          switch (profile.if.condition) {
+            case 'running':
+              if (find(processList, (item) => profile.if.forProcesses.indexOf(item.name) > -1)) {
+                useCondition = true;
+              }
+              break;
+            case 'fullscreenOverrideActive':
+              if (appConfig.fullscreenPriority && isValidActiveFullscreenApp) {
+                // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
+                if (profile.if.forProcesses && profile.if.forProcesses.indexOf(activeProcess.name) === -1) {
+                  break;
+                }
 
-      if (cpuPriority != null) {
-        if (!attemptProcessModification(setPriorityClass, Id, cpuPriority)) continue;
-      }
+                useCondition = true;
+              }
+              break;
+          }
 
-      if (pagePriority != null) {
-        if (!attemptProcessModification(setPagePriority, Id, pagePriority)) continue;
-      }
+          if (useCondition) {
+            let shouldContinue = false;
 
-      if (ioPriority != null) {
-        if (!attemptProcessModification(setIOPriority, Id, ioPriority)) continue;
-      }
+            if (detailedLogging) {
+              log.info(
+                `${attributesString}if -> ${profile.if.condition} -> then -> `
+                + `${typeof profile.if.then !== 'string' ? 'replace' : profile.if.then} -> true`
+              );
+            }
 
-      if (affinity != null) {
-        if (!attemptProcessModification(setProcessorAffinity, Id, affinity)) continue;
-      }
+            switch (true) {
+              // disable (skip) rule enforcement
+              case (profile.if.then === 'disable'):
+                shouldContinue = true;
+                break;
+              // replace rule
+              case (typeof profile.if.then === 'object'):
+                attributesString = `[${name += ` -> ${profile.if.then.name ? profile.if.then.name : 'override'}`}] ${psName} (${pid})`;
+                profile = Object.assign({}, profile, profile.if.then);
+                break;
+            }
 
-      previousProcessName = Name;
+            if (shouldContinue) continue;
+          }
+        }
+
+        if (isActive) {
+          if (profile.affinity && profile.affinity !== fullAffinity) {
+            profile = Object.assign({}, profile, {
+              affinity: fullAffinity,
+            });
+          }
+        }
+
+        // Handle fullscreen priority increase. If the active window is taking up exactly
+        // the dimensions of the primary monitor, then we will give it high priority.
+        // TODO: This doesn't work with some games, so there is more needing to be done
+        // as far as detecting the window/monitor rects.
+        if (appConfig.fullscreenPriority) {
+          switch (true) {
+            case (usePerformancePriorities && !fullscreenOptimizedPid):
+              [processAffinity, systemAffinity] = getProcessorAffinity(pid);
+
+              fullscreenOriginalState = {
+                cpuPriority: getPriorityClass(pid),
+                affinity: systemAffinity,
+              };
+
+              profile = Object.assign({}, profile, {
+                affinity: fullAffinity,
+                cpuPriority: cpuPriorityMap.high,
+                pagePriority: pagePriorityMap.normal,
+                ioPriority: ioPriorityMap.normal,
+              });
+
+              log.info(`Priority boosting fullscreen window ${psName} (${pid})`);
+
+              fullscreenOptimizedPid = pid;
+              fullscreenPriorityBoostAffected = true;
+              break;
+            case (isFullscreenOptimized && !usePerformancePriorities):
+              profile = Object.assign({}, profile, {
+                affinity: fullscreenOriginalState.affinity,
+                cpuPriority: fullscreenOriginalState.cpuPriority,
+                pagePriority: pagePriorityMap.normal,
+                ioPriority: ioPriorityMap.normal,
+              });
+
+              log.info(`Resetting priority boost for previously fullscreen window ${psName} (${pid})`);
+
+              fullscreenOptimizedPid = 0;
+              fullscreenPriorityBoostAffected = true;
+              fullscreenOriginalState = null;
+              break;
+          }
+        }
+
+        // Stop here if the process doesn't match - the fullscreen priority logic above is
+        // intended to work for all processes.
+        if (!fullscreenPriorityBoostAffected && !processMatched) continue;
+
+        if (suspensionDelay = profile.suspensionDelay) {
+          logAttributes.push(`suspension delay: ${suspensionDelay}`);
+        }
+
+        if (resumeDelay = profile.resumeDelay) {
+          logAttributes.push(`resume delay: ${resumeDelay}`);
+        }
+
+        if (terminationDelay = profile.terminationDelay) {
+          logAttributes.push(`termination delay: ${terminationDelay}`);
+        }
+
+        if (affinity = profile.affinity) {
+          logAttributes.push(`affinity: ${profile.affinityName}`);
+        }
+
+        if (cpuPriority = profile.cpuPriority) {
+          logAttributes.push(`cpuPriority: ${cpuPriorityMap[cpuPriority.toString()]}`);
+        }
+
+        if (pagePriority = profile.pagePriority) {
+          logAttributes.push(`pagePriority: ${pagePriorityMap[pagePriority.toString()]}`);
+        }
+
+        if (ioPriority = profile.ioPriority) {
+          logAttributes.push(`ioPriority: ${ioPriorityMap[ioPriority.toString()]}`);
+        }
+
+        if (shouldLog) log.info(`${attributesString} ${logAttributes.join(', ')}`);
+        previousProfile = profile;
+        break;
+      }
     }
 
-    log.info(`Finished process enforcement in ${Date.now() - now}ms`);
-    log.close();
+    if (suspensionDelay != null) {
+      setTimeout(() => suspendProcess(pid), suspensionDelay);
+      continue;
+    }
 
-    timeout = setTimeout(runRoutine, interval);
-  });
+    if (resumeDelay != null) {
+      setTimeout(() => resumeProcess(pid), resumeDelay);
+      continue;
+    }
+
+    if (terminationDelay != null) {
+      setTimeout(() => terminateProcess(pid), terminationDelay);
+      continue;
+    }
+
+    if (cpuPriority != null) {
+      if (!attemptProcessModification(setPriorityClass, pid, cpuPriority)) continue;
+    }
+
+    if (pagePriority != null) {
+      if (!attemptProcessModification(setPagePriority, pid, pagePriority)) continue;
+    }
+
+    if (ioPriority != null) {
+      if (!attemptProcessModification(setIOPriority, pid, ioPriority)) continue;
+    }
+
+    if (affinity != null) {
+      if (!attemptProcessModification(setProcessorAffinity, pid, affinity)) continue;
+    }
+
+    previousProcessName = psName;
+  }
+
+  log.info(`Finished process enforcement in ${Date.now() - now}ms`);
+  log.close();
+
+  timeout = setTimeout(runRoutine, interval);
 };
 
 const init = () => {
@@ -531,7 +512,7 @@ loadConfiguration = (): void => {
     .then((count) => {
       useHT = count !== coreCount;
       physicalCoreCount = count;
-      fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]]);
+      fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]], useHT, coreCount);
       return fs.ensureDir(appDir);
     })
     .then(() => fs.ensureDir(logDir))

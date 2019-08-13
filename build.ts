@@ -13,10 +13,12 @@ fs.ensureDir('./staging')
   .then(() => fs.ensureDir('./staging/node_modules/ffi/build/Release/'))
   .then(() => fs.ensureDir('./staging/node_modules/iconv/build/Release/'))
   .then(() => fs.ensureDir('./staging/node_modules/ref/build/Release/'))
+  .then(() => fs.ensureDir('./staging/node_modules/process-list/build/Release/'))
   .then(() => copyFile('./config.yaml', './staging/config.yaml'))
   .then(() => copyFile('node_modules/ffi/build/Release/ffi_bindings.node', './staging/node_modules/ffi/build/Release/ffi_bindings.node'))
   .then(() => copyFile('node_modules/iconv/build/Release/iconv.node', './staging/node_modules/iconv/build/Release/iconv.node'))
   .then(() => copyFile('node_modules/ref/build/Release/binding.node', './staging/node_modules/ref/build/Release/binding.node'))
+  .then(() => copyFile('node_modules/process-list/build/Release/processlist.node', './staging/node_modules/process-list/build/Release/processlist.node'))
   .then(() => exec(['./dist/index.js', '-t', 'node10-win', '-o', './staging/wincontrol']))
   .then(() => {
     const output = fs.createWriteStream(`./release/wincontrol-${packageJSON.version}.zip`);

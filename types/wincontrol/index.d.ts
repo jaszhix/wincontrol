@@ -11,6 +11,7 @@ declare interface Conditional {
 
 declare interface ProcessConfiguration {
   name?: string;
+  cmd?: string[];
   affinity?: number;
   affinityName?: number;
   cpuPriority?: number;
