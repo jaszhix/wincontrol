@@ -136,11 +136,13 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
         validateAndParseProfile(profile.if.then, index, false);
 
-        for (let i = 0, len = keys.length; i < len; i++) {
-          let key = keys[i];
+        if (keys.indexOf('terminationDelay') === -1) {
+          for (let i = 0, len = keys.length; i < len; i++) {
+            let key = keys[i];
 
-          if (profile[key] == null) {
-            throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' child cannot have keys the parent does not have.`);
+            if (profile[key] == null) {
+              throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' child cannot have keys the parent does not have.`);
+            }
           }
         }
       }
