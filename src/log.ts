@@ -29,7 +29,7 @@ class Log {
   constructor(
     location = logDir,
     fileNamePrefix = 'session',
-    enableConsoleLog = true
+    enableConsoleLog = false
   ) {
     this.location = location;
     this.fileNamePrefix = fileNamePrefix;

@@ -28,6 +28,7 @@ declare interface AppConfiguration {
   interval: number;
   logging?: boolean;
   detailedLogging?: boolean;
+  consoleLogging?: boolean;
   logLevel?: string;
   detectConfigChange?: boolean;
   fullscreenPriority?: boolean;

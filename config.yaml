@@ -3,9 +3,10 @@
 # See `ProcessConfiguration` at https://github.com/jaszhix/wincontrol/blob/master/types/wincontrol/index.d.ts
 # for all possible configuration options.
 
-interval: 120000
+interval: 60000
 logging: true
-logPerProcessAndRule: true
+detailedLogging: false
+consoleLogging: false
 logLevel: info
 detectConfigChange: true
 fullscreenPriority: true

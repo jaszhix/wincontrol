@@ -527,9 +527,10 @@ loadConfiguration = (): void => {
 
       if (!config) {
         config = {
-          interval: 120000,
+          interval: 60000,
           logging: true,
           detailedLogging: false,
+          consoleLogging: false,
           logLevel: 'info',
           detectConfigChange: true,
           fullscreenPriority: true,
@@ -539,6 +540,7 @@ loadConfiguration = (): void => {
       }
 
       log.enabled = config.logging;
+      log.enableConsoleLog = config.consoleLogging;
 
       if (log.enabled && config.logLevel) {
         let index = LogLevel.indexOf(config.logLevel.toUpperCase());
