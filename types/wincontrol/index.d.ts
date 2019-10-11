@@ -21,6 +21,7 @@ declare interface ProcessConfiguration {
   suspensionDelay?: number;
   resumeDelay?: number;
   processes?: string[];
+  default?: boolean;
   if?: Conditional;
 }
 

@@ -32,6 +32,14 @@ affinities:
     ranges: [[0, 13]]
 
 profiles:
+  # A profile with the default property with its value set to true will have all other processes
+  # not listed prioritized according to its rules. This only works explicitly.
+  - name: default
+    affinity: full
+    cpuPriority: belowNormal
+    ioPriority: low
+    default: true
+
   - name: servicesPriorityOnlyLow
     affinity: full
     cpuPriority: belowNormal

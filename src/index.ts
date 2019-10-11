@@ -83,7 +83,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
         processesConfigured.push(processName);
       }
-    } else if (!cmd) {
+    } else if (!cmd && !profile.default) {
       throw new Error(`[${name}] Misconfiguration found - missing required property 'processes'.`);
     } else {
       profile.processes = [];
@@ -178,11 +178,22 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
   const {profiles} = appConfig;
   const results = [];
   const endResults = [];
+  let defaultProfile: ProcessConfiguration = null;
 
   for (let i = 0, len = profiles.length; i < len; i++) {
     const profile = validateAndParseProfile(profiles[i], i, true);
 
+    if (profile.default) {
+      if (defaultProfile) {
+        throw new Error(`[${profile.name}] Multiple default profiles found. Only one profile can be set as default in a configuration.`);
+      }
+
+      defaultProfile = profile;
+      continue;
+    }
+
     // Move profiles containing the if property to the end of the results array.
+    // The default property should be the last item if found.
     if (profile.if) {
       endResults.push(profile);
     } else {
@@ -190,7 +201,9 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
     }
   }
 
-  appConfig.profiles = results.concat(endResults);
+  appConfig.profiles = results
+    .concat(endResults)
+    .concat([defaultProfile]);
 }
 
 const attemptProcessModification = (func: Function, id: number, value: number): boolean => {
@@ -306,6 +319,8 @@ enforcePolicy = (processList): void => {
           }
         }
       }
+
+      if (!processMatched && !usePerformancePriorities && profile.default) processMatched = true;
 
       if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
         let attributesString = `[${name}] ${psName} (${pid}): `;
@@ -483,6 +498,7 @@ enforcePolicy = (processList): void => {
   }
 
   log.info(`Finished process enforcement in ${Date.now() - now}ms`);
+  log.info('fullscreenOptimizedPid:', fullscreenOptimizedPid);
   log.close();
 
   timeout = setTimeout(runRoutine, interval);
