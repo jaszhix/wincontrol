@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "bin": "dist/index.js",
   "scripts": {
-    "start": "node --inspect -r ts-node/register ./src/index.ts",
+    "start": "cross-env NODE_ENV=development node --inspect -r ts-node/register ./src/index.ts",
     "build": "ts-node ./build.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -32,6 +32,7 @@
     "@types/node": "^12.0.0",
     "@types/ref": "0.0.28",
     "babel-eslint": "^10.0.1",
+    "cross-env": "^6.0.3",
     "del": "^4.1.1",
     "eslint": "^5.16.0",
     "pkg": "^4.4.0",

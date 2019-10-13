@@ -2,6 +2,7 @@ import fs from 'fs-extra';
 import {EOL} from 'os';
 import {snapshot} from 'process-list';
 import {
+  isDevelopment,
   appDir,
   logDir,
   appConfigYamlPath,
@@ -180,10 +181,14 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 }
 
 const parseProfilesConfig = (appConfig: AppConfiguration): void => {
-  const {profiles} = appConfig;
+  const {profiles, ignoreProcesses} = appConfig;
   const results = [];
   const endResults = [];
   let defaultProfile: ProcessConfiguration = null;
+
+  for (let i = 0, len = ignoreProcesses.length; i < len; i++) {
+    ignoreProcesses[i] = ignoreProcesses[i].toLowerCase();
+  }
 
   for (let i = 0, len = profiles.length; i < len; i++) {
     const profile = validateAndParseProfile(profiles[i], i, true);
@@ -262,7 +267,7 @@ enforcePolicy = (processList): void => {
 
   const {profiles, interval} = appConfig;
   const activeWindow = getActiveWindow();
-  const {logging, detailedLogging} = appConfig;
+  const {logging, detailedLogging, ignoreProcesses} = appConfig;
   let isValidActiveFullscreenApp = false;
   let activeProcess;
   let logItems: any[] = [];
@@ -289,11 +294,8 @@ enforcePolicy = (processList): void => {
     let {pid, name, cmdline} = ps;
     let psName = name;
 
-    // If we've ever failed, there's a good chance we don't have correct permissions to modify the process.
-    // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
-    // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
-    // fullscreen priority is applied.
-    //if (cmdline && failedProcessCommandLines.indexOf(cmdline) > -1 && pid !== fullscreenOptimizedPid) continue;
+    // Check the ignore list
+    if (ignoreProcesses.indexOf(psName) > -1) continue;
 
     let isActive = pid === activeWindow.pid;
     let usePerformancePriorities = isActive && isValidActiveFullscreenApp;
@@ -622,6 +624,7 @@ const init = () => {
 
   log.info('====================== Config info ======================');
   log.info(`Configuration file: ${appConfigYamlPath}`);
+  log.info(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   log.info(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
   log.info(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
   log.info(`Physical core count: ${physicalCoreCount}`);
@@ -669,6 +672,7 @@ loadConfiguration = (): void => {
           logLevel: 'info',
           detectConfigChange: true,
           fullscreenPriority: true,
+          ignoreProcesses: [],
           profiles: [],
           affinities: []
         };
@@ -676,6 +680,11 @@ loadConfiguration = (): void => {
 
       log.enabled = config.logging;
       log.enableConsoleLog = config.consoleLogging;
+
+      if (isDevelopment) {
+        log.enabled = log.enableConsoleLog = config.logging = config.consoleLogging = true;
+        config.logLevel = 'info';
+      }
 
       if (log.enabled && config.logLevel) {
         let index = LogLevel.indexOf(config.logLevel.toUpperCase());

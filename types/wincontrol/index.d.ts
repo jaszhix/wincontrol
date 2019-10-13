@@ -34,6 +34,7 @@ declare interface AppConfiguration {
   logLevel?: string;
   detectConfigChange?: boolean;
   fullscreenPriority?: boolean;
+  ignoreProcesses?: string[];
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
 }

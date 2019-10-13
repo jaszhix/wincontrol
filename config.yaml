@@ -11,6 +11,21 @@ logLevel: info
 detectConfigChange: true
 fullscreenPriority: true
 
+# Processes that will always be ignored.
+# These examples in particular are protected system processes, and can't be modified.
+ignoreProcesses:
+  - system
+  - registry
+  - smss
+  - csrss
+  - wininit
+  - services
+  - memory compression
+  - msmpeng
+  - securityhealthservice
+  - sgrmbroker
+  - nissrv
+
 affinities:
   - name: systemLow
     ranges: [[12, 13]]

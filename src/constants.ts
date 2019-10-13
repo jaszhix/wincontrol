@@ -10,6 +10,7 @@ const execOptions: any = {
   stdio: ['ignore', 'pipe', 'ignore']
 }
 
+const isDevelopment = process.env.NODE_ENV === 'development';
 const coreCount: number = cpus().length;
 const homeDir: string = homedir();
 const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
@@ -128,6 +129,7 @@ enum GW {
 
 export {
   execOptions,
+  isDevelopment,
   coreCount,
   homeDir,
   appDir,
