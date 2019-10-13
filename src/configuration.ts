@@ -1,12 +1,14 @@
-import {userInfo, hostname, EOL} from 'os';
-import {resolve, join} from 'path';
+import {userInfo, hostname} from 'os';
+import {resolve} from 'path';
 import fs from 'fs-extra';
 import {exc, getUserSID} from './utils';
+import log from './log';
 
 const hostName = hostname();
 const {username} = userInfo();
 const identity = `${hostName}\\${username}`;
 const currentPath = resolve('.');
+const taskName = 'Start WinControl';
 
 const createTaskShedulerTemplate = (sid): string =>
 `<?xml version="1.0" encoding="UTF-16"?>
@@ -14,7 +16,7 @@ const createTaskShedulerTemplate = (sid): string =>
   <RegistrationInfo>
     <Date>2019-05-05T21:57:29.0269835</Date>
     <Author>${identity}</Author>
-    <URI>\\Start WinControl</URI>
+    <URI>\\${taskName}</URI>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>
@@ -59,12 +61,13 @@ const createTaskShedulerTemplate = (sid): string =>
   </Actions>
 </Task>`;
 
-const installTaskSchedulerTemplate = async () => {
-  let res = createTaskShedulerTemplate(await getUserSID(username));
-  let path = join(currentPath, 'import.xml');
+const installTaskSchedulerTemplate = async (path: string) => {
+  let template = createTaskShedulerTemplate(await getUserSID(username));
 
-  await fs.writeFile(path, res);
-  await exc(`schtasks /create /xml "${path}"`);
+  await fs.writeFile(path, template);
+  await exc(`schtasks /create /xml "${path}" /tn "\\${taskName}"`);
+
+  log.info('Installed scheduled task for starting WinControl on user login.');
 };
 
-installTaskSchedulerTemplate();
+export {installTaskSchedulerTemplate};

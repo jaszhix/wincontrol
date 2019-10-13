@@ -5,6 +5,7 @@ import {
   appDir,
   logDir,
   appConfigYamlPath,
+  appConfigTaskXMLPath,
   ifConditionOptions,
   falsePositiveFullscreenApps,
   coreCount,
@@ -32,7 +33,8 @@ import {
   getAffinityForCoreRanges,
   readYamlFile
 } from './utils';
-import {find, findIndex} from './lang';
+import {installTaskSchedulerTemplate} from './configuration';
+import {find} from './lang';
 import log from './log';
 
 let physicalCoreCount: number;
@@ -598,11 +600,6 @@ enforcePolicy = (processList): void => {
 
         for (let i = 0, len = failed.length; i < len; i++) {
           let {psName, pids} = failed[i];
-          //let correctedPids = [];
-
-          // for (let i = 0, len = pids.length; i < len; i++) {
-          //   if (failedPids.indexOf(pids[i]) > -1) correctedPids.push(pids[i]);
-          // }
 
           logOutput += `- ${psName}${pids && pids.length ? ` (${pids.join(', ')})` : ''}${EOL}`;
         }
@@ -652,6 +649,11 @@ loadConfiguration = (): void => {
     .then(() => fs.exists(appConfigYamlPath))
     .then((exists) => {
       if (!exists) return copyFile('./config.yaml', appConfigYamlPath);
+      return Promise.resolve();
+    })
+    .then(() => fs.exists(appConfigTaskXMLPath))
+    .then((exists) => {
+      if (!exists) return installTaskSchedulerTemplate(appConfigTaskXMLPath);
       return Promise.resolve();
     })
     .then(() => readYamlFile(appConfigYamlPath))

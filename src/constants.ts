@@ -15,6 +15,7 @@ const homeDir: string = homedir();
 const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
 const logDir: string = `${appDir}\\logs`;
 const appConfigYamlPath: string = `${appDir}\\config.yaml`;
+const appConfigTaskXMLPath: string = `${appDir}\\import.xml`;
 
 const ifConditionOptions = ['running', 'fullscreenOverrideActive'];
 
@@ -132,6 +133,7 @@ export {
   appDir,
   logDir,
   appConfigYamlPath,
+  appConfigTaskXMLPath,
   ifConditionOptions,
   falsePositiveFullscreenApps,
   cpuPriorityMap,
