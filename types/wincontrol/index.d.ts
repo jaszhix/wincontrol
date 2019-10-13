@@ -14,6 +14,7 @@ declare interface ProcessConfiguration {
   cmd?: string[];
   affinity?: number;
   affinityName?: number;
+  graph?: string;
   cpuPriority?: number;
   pagePriority?: number;
   ioPriority?: number;

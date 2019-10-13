@@ -70,9 +70,10 @@ const getAffinityForCoreRanges = (
   cores: Array<number[]>,
   useHT: boolean = true,
   coreCount: number
-): number => {
+): [number, string] => {
   let n: number = 0;
   let flatCores: number[] = [];
+  let graph: any = Array(useHT ? coreCount / 2 : coreCount).fill('--');
 
   // Turn the 2D array of core range pairs into a flat array of actual cores
   for (let i = 0; i < cores.length; i++) {
@@ -88,6 +89,17 @@ const getAffinityForCoreRanges = (
       start++;
     }
   }
+
+  for (let i = 0, len = flatCores.length; i < len; i++) {
+    let coreNumber = flatCores[i];
+    let n = coreNumber.toString();
+
+    if (n.length === 1) n = ` ${n}`;
+
+    graph[coreNumber] = n;
+  }
+
+  graph = `[${graph.join('|')}]`;
 
   // If we are concerned about hyper-threading, also select the logical cores.
   // This is generally preferred because IPC overhead gets worse when moving between physical cores.
@@ -108,7 +120,8 @@ const getAffinityForCoreRanges = (
     if (!n) n = mask;
     else n ^= mask;
   }
-  return n;
+
+  return [n, graph];
 };
 
 export {

@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import {EOL} from 'os';
 import {snapshot} from 'process-list';
 import {
   appDir,
@@ -31,13 +32,13 @@ import {
   getAffinityForCoreRanges,
   readYamlFile
 } from './utils';
-import {find} from './lang';
+import {find, findIndex} from './lang';
 import log from './log';
 
 let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
-let failedProcesses = [];
+let failedPids = [];
 let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
@@ -159,9 +160,11 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
   }
 
   if (affinity) {
+    const [translatedAffinity, graph] = getAffinityForCoreRanges(affinity.ranges, useHT, coreCount);
     Object.assign(profile, {
-      affinity: getAffinityForCoreRanges(affinity.ranges, useHT, coreCount),
       affinityName: affinity.name,
+      affinity: translatedAffinity,
+      graph
     });
   }
 
@@ -206,9 +209,9 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
     .concat([defaultProfile]);
 }
 
-const attemptProcessModification = (func: Function, id: number, value: number): boolean => {
+const attemptProcessModification = (func: Function, name: string, cmdline: string, id: number, value: number): boolean => {
   if (!func(id, value)) {
-    failedProcesses.push(id);
+    failedPids.push(id);
     return false;
   }
 
@@ -255,15 +258,16 @@ enforcePolicy = (processList): void => {
 
   if (timeout) clearTimeout(timeout);
 
-  log.open();
-
   const {profiles, interval} = appConfig;
   const activeWindow = getActiveWindow();
-  const {detailedLogging} = appConfig;
+  const {logging, detailedLogging} = appConfig;
   let isValidActiveFullscreenApp = false;
-  let previousProcessName: string;
-  let previousProfile: ProcessConfiguration;
   let activeProcess;
+  let logItems: any[] = [];
+  let refLogItem: any;
+  let logOutput: string = '';
+
+  if (logging) log.open();
 
   if (activeWindow.isFullscreen) {
     activeProcess = find(processList, (item) => activeWindow.pid === item.pid);
@@ -287,7 +291,7 @@ enforcePolicy = (processList): void => {
     // This mostly happens with security processes, or core system processes (e.g. "System", "Memory Compression").
     // Avoid log spam and stop attempting to change its attributes after the first failure, unless the
     // fullscreen priority is applied.
-    if (failedProcesses.indexOf(pid) > -1 && pid !== fullscreenOptimizedPid) continue;
+    //if (cmdline && failedProcessCommandLines.indexOf(cmdline) > -1 && pid !== fullscreenOptimizedPid) continue;
 
     let isActive = pid === activeWindow.pid;
     let usePerformancePriorities = isActive && isValidActiveFullscreenApp;
@@ -300,21 +304,26 @@ enforcePolicy = (processList): void => {
     let terminationDelay: number;
     let suspensionDelay: number;
     let resumeDelay: number;
-    let processAffinity: number;
     let systemAffinity: number;
 
-    if (pid === process.pid) continue;
+    if (pid === process.pid || !pid) continue;
 
     for (let i = 0, len = profiles.length; i < len; i++) {
       let profile = profiles[i];
-      let {name, processes, cmd} = profile;
-
+      let {name, processes, cmd, graph} = profile;
       let processMatched = processes.indexOf(psName) > -1;
+      let cmdAffected: string;
+
+      // Logging variables
+      let isReplacedBy: string;
+      let isDisabled = false;
+      let conditionReason: string;
 
       if (!processMatched && cmd) {
         for (let i = 0, len = cmd.length; i < len; i++) {
           if (cmdline.indexOf(cmd[i]) > -1) {
             processMatched = true;
+            if (logging) cmdAffected = cmd[i];
             break;
           }
         }
@@ -323,17 +332,18 @@ enforcePolicy = (processList): void => {
       if (!processMatched && !usePerformancePriorities && profile.default) processMatched = true;
 
       if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
-        let attributesString = `[${name}] ${psName} (${pid}): `;
-        let logAttributes = [];
-        let shouldLog = detailedLogging || previousProcessName !== psName || previousProfile !== profile;
-
         if (profile.if) {
           let useCondition = false;
 
           switch (profile.if.condition) {
             case 'running':
-              if (find(processList, (item) => profile.if.forProcesses.indexOf(item.name) > -1)) {
-                useCondition = true;
+              for (let i = 0, len = processList.length; i < len; i++) {
+                processList[i]
+
+                if (profile.if.forProcesses.indexOf(processList[i].name) > -1) {
+                  useCondition = true;
+                  if (logging) conditionReason = `${processList[i].name} is running`;
+                }
               }
               break;
             case 'fullscreenOverrideActive':
@@ -344,6 +354,7 @@ enforcePolicy = (processList): void => {
                 }
 
                 useCondition = true;
+                if (logging) conditionReason = `Active process '${activeProcess.name}' is fullscreen`;
               }
               break;
           }
@@ -351,21 +362,14 @@ enforcePolicy = (processList): void => {
           if (useCondition) {
             let shouldContinue = false;
 
-            if (detailedLogging) {
-              log.info(
-                `${attributesString}if -> ${profile.if.condition} -> then -> `
-                + `${typeof profile.if.then !== 'string' ? 'replace' : profile.if.then} -> true`
-              );
-            }
-
             switch (true) {
               // disable (skip) rule enforcement
               case (profile.if.then === 'disable'):
-                shouldContinue = true;
+                shouldContinue = isDisabled = true;
                 break;
               // replace rule
               case (typeof profile.if.then === 'object'):
-                attributesString = `[${name += ` -> ${profile.if.then.name ? profile.if.then.name : 'override'}`}] ${psName} (${pid})`;
+                isReplacedBy = profile.if.then.name ? profile.if.then.name : 'override';
                 profile = Object.assign({}, profile, profile.if.then);
                 break;
             }
@@ -389,7 +393,7 @@ enforcePolicy = (processList): void => {
         if (appConfig.fullscreenPriority) {
           switch (true) {
             case (usePerformancePriorities && !fullscreenOptimizedPid):
-              [processAffinity, systemAffinity] = getProcessorAffinity(pid);
+              [/* processAffinity */, systemAffinity] = getProcessorAffinity(pid);
 
               fullscreenOriginalState = {
                 cpuPriority: getPriorityClass(pid),
@@ -429,36 +433,66 @@ enforcePolicy = (processList): void => {
         // intended to work for all processes.
         if (!fullscreenPriorityBoostAffected && !processMatched) continue;
 
-        if (suspensionDelay = profile.suspensionDelay) {
-          logAttributes.push(`suspension delay: ${suspensionDelay}`);
-        }
+        if (logging) {
+          refLogItem = find(logItems, (item) => item.name === name);
 
-        if (resumeDelay = profile.resumeDelay) {
-          logAttributes.push(`resume delay: ${resumeDelay}`);
-        }
+          if (!refLogItem) {
+            refLogItem = {
+              name,
+              isDisabled,
+              isReplacedBy,
+              conditionReason,
+              affected: [{
+                psName,
+                cmdAffected,
+                pids: [pid]
+              }],
+              failed: []
+            };
 
-        if (terminationDelay = profile.terminationDelay) {
-          logAttributes.push(`termination delay: ${terminationDelay}`);
-        }
+            logItems.push(refLogItem);
+          } else {
+            const psObject = find(refLogItem.affected, (proc) => proc.psName === psName);
 
-        if (affinity = profile.affinity) {
-          logAttributes.push(`affinity: ${profile.affinityName}`);
-        }
+            if (!psObject) {
+              refLogItem.affected.push({
+                psName,
+                pids: [pid]
+              });
+            } else {
+              psObject.pids.push(pid);
+            }
+          }
 
-        if (cpuPriority = profile.cpuPriority) {
-          logAttributes.push(`cpuPriority: ${cpuPriorityMap[cpuPriority.toString()]}`);
-        }
+          if (suspensionDelay = profile.suspensionDelay) {
+            refLogItem.suspensionDelay = suspensionDelay;
+          }
 
-        if (pagePriority = profile.pagePriority) {
-          logAttributes.push(`pagePriority: ${pagePriorityMap[pagePriority.toString()]}`);
-        }
+          if (resumeDelay = profile.resumeDelay) {
+            refLogItem.resumeDelay = resumeDelay;
+          }
 
-        if (ioPriority = profile.ioPriority) {
-          logAttributes.push(`ioPriority: ${ioPriorityMap[ioPriority.toString()]}`);
-        }
+          if (terminationDelay = profile.terminationDelay) {
+            refLogItem.terminationDelay = terminationDelay;
+          }
 
-        if (shouldLog) log.info(`${attributesString} ${logAttributes.join(', ')}`);
-        previousProfile = profile;
+          if (affinity = profile.affinity) {
+            refLogItem.affinityName = profile.affinityName;
+            refLogItem.graph = graph;
+          }
+
+          if (cpuPriority = profile.cpuPriority) {
+            refLogItem.cpuPriority = cpuPriorityMap[cpuPriority.toString()];
+          }
+
+          if (pagePriority = profile.pagePriority) {
+            refLogItem.pagePriority = pagePriorityMap[pagePriority.toString()];
+          }
+
+          if (ioPriority = profile.ioPriority) {
+            refLogItem.ioPriority = ioPriorityMap[ioPriority.toString()];
+          }
+        }
         break;
       }
     }
@@ -478,28 +512,109 @@ enforcePolicy = (processList): void => {
       continue;
     }
 
-    if (cpuPriority != null) {
-      if (!attemptProcessModification(setPriorityClass, pid, cpuPriority)) continue;
+    if (cpuPriority != null && !attemptProcessModification(setPriorityClass, psName, cmdline, pid, cpuPriority)) {
+      continue;
     }
 
-    if (pagePriority != null) {
-      if (!attemptProcessModification(setPagePriority, pid, pagePriority)) continue;
+    if (pagePriority != null && !attemptProcessModification(setPagePriority, psName, cmdline, pid, pagePriority)) {
+      continue;
     }
 
-    if (ioPriority != null) {
-      if (!attemptProcessModification(setIOPriority, pid, ioPriority)) continue;
+    if (ioPriority != null && !attemptProcessModification(setIOPriority, psName, cmdline, pid, ioPriority)) {
+      continue;
     }
 
-    if (affinity != null) {
-      if (!attemptProcessModification(setProcessorAffinity, pid, affinity)) continue;
+    if (affinity != null && !attemptProcessModification(setProcessorAffinity, psName, cmdline, pid, affinity)) {
+      continue;
     }
-
-    previousProcessName = psName;
   }
 
-  log.info(`Finished process enforcement in ${Date.now() - now}ms`);
-  log.info('fullscreenOptimizedPid:', fullscreenOptimizedPid);
-  log.close();
+  if (logging) {
+    // Build the logging sequence
+    for (let i = 0, len = logItems.length; i < len; i++) {
+      let logItem = logItems[i];
+      let {affected, graph, isDisabled, isReplacedBy, conditionReason} = logItem;
+      let keys = Object.keys(logItem);
+      let failed = [];
+
+      logOutput +=
+        `${EOL}${isDisabled ? '[DISABLED] ' : isReplacedBy ? `[OVERRIDDEN: ${isReplacedBy}] ` : ''}${logItem.name} -> `;
+
+      keys.splice(keys.indexOf('name'), 1);
+      keys.splice(keys.indexOf('graph'), 1);
+      keys.splice(keys.indexOf('affected'), 1);
+      keys.splice(keys.indexOf('failed'), 1);
+      keys.splice(keys.indexOf('isDisabled'), 1);
+      keys.splice(keys.indexOf('isReplacedBy'), 1);
+      keys.splice(keys.indexOf('conditionReason'), 1);
+
+      for (let z = 0, len = keys.length; z < len; z++) {
+        let key = keys[z];
+
+        logOutput += `${key}: ${logItem[key]}${z === keys.length - 1 ? '' : ', '}`;
+      }
+
+      if (graph) {
+        logOutput += `${EOL}${graph}`;
+      }
+
+      if (conditionReason) logOutput += `${EOL}${isDisabled ? 'Disabled' : 'Override'} reason: ${conditionReason}${EOL}`;
+
+      if (affected.length) {
+        logOutput += `${EOL}Affected:${EOL}`;
+
+        for (let i = 0, len = affected.length; i < len; i++) {
+          let {psName, cmdAffected, pids} = affected[i];
+          let hasFailingProcess = false;
+          let sPids = [];
+          let fPids = [];
+
+          for (let i = 0, len = pids.length; i < len; i++) {
+            if (failedPids.indexOf(pids[i]) === -1) {
+              sPids.push(pids[i]);
+            } else if (!hasFailingProcess) {
+              fPids.push(pids[i]);
+              hasFailingProcess = true;
+            }
+          }
+
+          if (sPids.length) {
+            logOutput += `- ${psName}${pids && pids.length ? ` (${sPids.join(', ')})` : ''}${EOL}`;
+
+            if (cmdAffected) {
+              logOutput += `  Triggered by command line wildcard rule: '${cmdAffected}'${EOL}`;
+            }
+          }
+
+          if (hasFailingProcess) {
+            affected[i].pids = fPids;
+            failed.push(affected[i]);
+          }
+        }
+      }
+
+      if (failed.length) {
+        logOutput += `${EOL}Failed:${EOL}`;
+
+        for (let i = 0, len = failed.length; i < len; i++) {
+          let {psName, pids} = failed[i];
+          //let correctedPids = [];
+
+          // for (let i = 0, len = pids.length; i < len; i++) {
+          //   if (failedPids.indexOf(pids[i]) > -1) correctedPids.push(pids[i]);
+          // }
+
+          logOutput += `- ${psName}${pids && pids.length ? ` (${pids.join(', ')})` : ''}${EOL}`;
+        }
+      }
+    }
+
+    log.info(logOutput);
+    log.info(`Finished process enforcement in ${Date.now() - now}ms`);
+    log.info('fullscreenOptimizedPid:', fullscreenOptimizedPid);
+    log.info('=========================================================');
+    log.close();
+  }
 
   timeout = setTimeout(runRoutine, interval);
 };
@@ -530,7 +645,7 @@ loadConfiguration = (): void => {
     .then((count) => {
       useHT = count !== coreCount;
       physicalCoreCount = count;
-      fullAffinity = getAffinityForCoreRanges([[0, physicalCoreCount - 1]], useHT, coreCount);
+      [fullAffinity, ] = getAffinityForCoreRanges([[0, physicalCoreCount - 1]], useHT, coreCount);
       return fs.ensureDir(appDir);
     })
     .then(() => fs.ensureDir(logDir))

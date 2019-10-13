@@ -53,7 +53,7 @@ class Log {
           argsString += `${args[i].stack}${EOL}`;
           continue;
         }
-        argsString += `${JSON.stringify(args[i])} `;
+        argsString += `${args[i]} `;
       }
 
       this.lines.push(
