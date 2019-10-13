@@ -1,5 +1,6 @@
 /// <reference types="node" />
 
+import {EOL} from 'os';
 import fs from 'fs-extra';
 import {exec} from 'child_process';
 import yaml from 'yaml';
@@ -66,6 +67,20 @@ const getPhysicalCoreCount = (): Promise<any> => {
   });
 };
 
+const getUserSID = (username: string): Promise<string> => {
+  return exc('WMIC useraccount get name,sid').then((out: string) => {
+    const lines = out.split(EOL);
+
+    for (let i = 0, len = lines.length; i < len; i++) {
+      if (i === 0) continue;
+
+      const [name, sid] = lines[i].split(/\s+/);
+
+      if (name === username) return sid;
+    }
+  });
+};
+
 const getAffinityForCoreRanges = (
   cores: Array<number[]>,
   useHT: boolean = true,
@@ -127,6 +142,7 @@ const getAffinityForCoreRanges = (
 export {
   exc,
   getPhysicalCoreCount,
+  getUserSID,
   copyFile,
   readYamlFile,
   getAffinityForCoreRanges
