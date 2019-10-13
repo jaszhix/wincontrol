@@ -19,6 +19,9 @@ fs.ensureDir('./staging')
   .then(() => copyFile('node_modules/iconv/build/Release/iconv.node', './staging/node_modules/iconv/build/Release/iconv.node'))
   .then(() => copyFile('node_modules/ref/build/Release/binding.node', './staging/node_modules/ref/build/Release/binding.node'))
   .then(() => copyFile('node_modules/process-list/build/Release/processlist.node', './staging/node_modules/process-list/build/Release/processlist.node'))
+  .then(() => copyFile('./bin/elevate.exe', './staging/elevate.exe'))
+  .then(() => copyFile('./bin/start.vbs', './staging/start.vbs'))
+  .then(() => copyFile('./bin/runWinControl.vbs', './staging/runWinControl.vbs'))
   .then(() => exec(['./dist/index.js', '-t', 'node10-win', '-o', './staging/wincontrol']))
   .then(() => {
     const output = fs.createWriteStream(`./release/wincontrol-${packageJSON.version}.zip`);
