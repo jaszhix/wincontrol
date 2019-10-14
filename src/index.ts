@@ -437,6 +437,14 @@ enforcePolicy = (processList): void => {
         // intended to work for all processes.
         if (!fullscreenPriorityBoostAffected && !processMatched) continue;
 
+        suspensionDelay = profile.suspensionDelay;
+        resumeDelay = profile.resumeDelay;
+        terminationDelay = profile.terminationDelay;
+        affinity = profile.affinity;
+        cpuPriority = profile.cpuPriority;
+        pagePriority = profile.pagePriority;
+        ioPriority = profile.ioPriority;
+
         if (logging) {
           refLogItem = find(logItems, (item) => item.name === name);
 
@@ -468,35 +476,19 @@ enforcePolicy = (processList): void => {
             }
           }
 
-          if (suspensionDelay = profile.suspensionDelay) {
-            refLogItem.suspensionDelay = suspensionDelay;
-          }
+          if (suspensionDelay) refLogItem.suspensionDelay = suspensionDelay;
+          if (resumeDelay) refLogItem.resumeDelay = resumeDelay;
+          if (terminationDelay) refLogItem.terminationDelay = terminationDelay;
+          if (cpuPriority) refLogItem.cpuPriority = cpuPriorityMap[cpuPriority.toString()];
+          if (pagePriority) refLogItem.pagePriority = pagePriorityMap[pagePriority.toString()];
+          if (ioPriority) refLogItem.ioPriority = ioPriorityMap[ioPriority.toString()];
 
-          if (resumeDelay = profile.resumeDelay) {
-            refLogItem.resumeDelay = resumeDelay;
-          }
-
-          if (terminationDelay = profile.terminationDelay) {
-            refLogItem.terminationDelay = terminationDelay;
-          }
-
-          if (affinity = profile.affinity) {
+          if (affinity) {
             refLogItem.affinityName = profile.affinityName;
             refLogItem.graph = graph;
           }
-
-          if (cpuPriority = profile.cpuPriority) {
-            refLogItem.cpuPriority = cpuPriorityMap[cpuPriority.toString()];
-          }
-
-          if (pagePriority = profile.pagePriority) {
-            refLogItem.pagePriority = pagePriorityMap[pagePriority.toString()];
-          }
-
-          if (ioPriority = profile.ioPriority) {
-            refLogItem.ioPriority = ioPriorityMap[ioPriority.toString()];
-          }
         }
+
         break;
       }
     }
