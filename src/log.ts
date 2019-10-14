@@ -21,6 +21,8 @@ class Log {
   public fileNamePrefix: string;
   public enabled: boolean = true;
   public enableConsoleLog: boolean = false;
+  public closing: boolean = false;
+  public importantLinesQueued: boolean = false;
   public logLevel: number = 0;
 
   // Used to queue lines of the log to be appended, so the file is written less frequently in chunks.
@@ -67,8 +69,11 @@ class Log {
     if (this.lines.length > 0) this.close();
   }
 
-  public close(cb?: (err: NodeJS.ErrnoException) => void) {
-    if (!this.enabled) return;
+  public close() {
+    if ((!this.enabled && !this.importantLinesQueued) || this.closing) return;
+
+    this.closing = true;
+    this.importantLinesQueued = false;
 
     const configPath = path.resolve(this.location, this.fileName);
     const {lines} = this;
@@ -78,9 +83,14 @@ class Log {
       output += lines[i] + EOL;
     }
 
-    processInput(configPath, output, cb);
+    processInput(configPath, output, () => this.closing = false);
 
     this.lines = [];
+  }
+
+  public important(...args: any[]) {
+    this.update(0, ...args);
+    this.importantLinesQueued = true;
   }
 
   public info(...args: any[]) {
@@ -96,8 +106,6 @@ class Log {
   }
 
   public error(...args: any[]) {
-    if (!this.enabled) return;
-
     this.update(2, ...args);
   }
 }

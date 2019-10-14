@@ -240,7 +240,7 @@ const runRoutine = (checkConfigChange = true): void => {
       processesConfigured = [];
 
       log.open();
-      log.info('Configuration changed, reloading...');
+      log.important('Configuration changed, reloading...');
       log.close();
 
       loadConfiguration();
@@ -534,7 +534,7 @@ enforcePolicy = (processList): void => {
       let failed = [];
 
       logOutput +=
-        `${EOL}${isDisabled ? '[DISABLED] ' : isReplacedBy ? `[OVERRIDDEN: ${isReplacedBy}] ` : ''}${logItem.name} -> `;
+        `${EOL}${isDisabled ? '[disabled] ' : isReplacedBy ? `[${isReplacedBy}] ` : ''}${logItem.name} -> `;
 
       keys.splice(keys.indexOf('name'), 1);
       keys.splice(keys.indexOf('graph'), 1);
@@ -602,7 +602,7 @@ enforcePolicy = (processList): void => {
 
     log.info(logOutput);
     log.info(`Finished process enforcement in ${Date.now() - now}ms`);
-    log.info('fullscreenOptimizedPid:', fullscreenOptimizedPid);
+    log.info('Fullscreen PID:', fullscreenOptimizedPid);
     log.info('=========================================================');
     log.close();
   }
@@ -614,17 +614,17 @@ const init = () => {
   // Lower the priority of wincontrol to idle
   setPriorityClass(process.pid, cpuPriorityMap.idle);
 
-  log.info('====================== Config info ======================');
-  log.info(`Configuration file: ${appConfigYamlPath}`);
-  log.info(`Environment: ${isDevelopment ? 'development' : 'production'}`);
-  log.info(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
-  log.info(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
-  log.info(`Physical core count: ${physicalCoreCount}`);
-  log.info(`Enforcement interval: ${appConfig.interval}ms`);
-  log.info(`CPU affinity presets: ${appConfig.affinities.length}`);
-  log.info(`Process profiles: ${appConfig.profiles.length}`);
-  log.info(`Processes configured: ${processesConfigured.length}`);
-  log.info('=========================================================');
+  log.important('====================== Config info ======================');
+  log.important(`Configuration file: ${appConfigYamlPath}`);
+  log.important(`Environment: ${isDevelopment ? 'development' : 'production'}`);
+  log.important(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
+  log.important(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
+  log.important(`Physical core count: ${physicalCoreCount}`);
+  log.important(`Enforcement interval: ${appConfig.interval}ms`);
+  log.important(`CPU affinity presets: ${appConfig.affinities.length}`);
+  log.important(`Process profiles: ${appConfig.profiles.length}`);
+  log.important(`Processes configured: ${processesConfigured.length}`);
+  log.important('=========================================================');
   log.close();
 
   runRoutine(false);
