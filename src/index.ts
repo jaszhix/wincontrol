@@ -42,6 +42,7 @@ let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
 let failedPids = [];
+let tempSuspendedPids = [];
 let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
@@ -140,7 +141,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
         validateAndParseProfile(profile.if.then, index, false);
 
-        if (keys.indexOf('terminationDelay') === -1) {
+        if (keys.indexOf('terminationDelay') === -1 && keys.indexOf('suspensionDelay') === -1) {
           for (let i = 0, len = keys.length; i < len; i++) {
             let key = keys[i];
 
@@ -308,6 +309,7 @@ enforcePolicy = (processList): void => {
     let terminationDelay: number;
     let suspensionDelay: number;
     let resumeDelay: number;
+    let wasTemporarilySuspended = false;
     let systemAffinity: number;
 
     if (pid === process.pid || !pid) continue;
@@ -375,10 +377,22 @@ enforcePolicy = (processList): void => {
               case (typeof profile.if.then === 'object'):
                 isReplacedBy = profile.if.then.name ? profile.if.then.name : 'override';
                 profile = Object.assign({}, profile, profile.if.then);
+
+                if (profile.suspensionDelay) {
+                  tempSuspendedPids.push(pid);
+                }
+
                 break;
             }
 
             if (shouldContinue) continue;
+          } else {
+            // If this is a trackable process and suspensionDelay is set conditionally, attempt to resume.
+            let tempSuspendedIndex = tempSuspendedPids.indexOf(pid);
+            if (tempSuspendedIndex > -1) {
+              profile.resumeDelay = 1;
+              tempSuspendedPids.splice(tempSuspendedIndex, 1);
+            }
           }
         }
 
@@ -429,6 +443,7 @@ enforcePolicy = (processList): void => {
               fullscreenOptimizedPid = 0;
               fullscreenPriorityBoostAffected = true;
               fullscreenOriginalState = null;
+
               break;
           }
         }
