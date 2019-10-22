@@ -309,7 +309,6 @@ enforcePolicy = (processList): void => {
     let terminationDelay: number;
     let suspensionDelay: number;
     let resumeDelay: number;
-    let wasTemporarilySuspended = false;
     let systemAffinity: number;
 
     if (pid === process.pid || !pid) continue;
@@ -390,7 +389,7 @@ enforcePolicy = (processList): void => {
             // If this is a trackable process and suspensionDelay is set conditionally, attempt to resume.
             let tempSuspendedIndex = tempSuspendedPids.indexOf(pid);
             if (tempSuspendedIndex > -1) {
-              profile.resumeDelay = 1;
+              resumeDelay = 1;
               tempSuspendedPids.splice(tempSuspendedIndex, 1);
             }
           }
@@ -454,6 +453,7 @@ enforcePolicy = (processList): void => {
 
         suspensionDelay = profile.suspensionDelay;
         resumeDelay = profile.resumeDelay;
+
         terminationDelay = profile.terminationDelay;
         affinity = profile.affinity;
         cpuPriority = profile.cpuPriority;
