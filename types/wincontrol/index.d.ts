@@ -37,6 +37,7 @@ declare interface AppConfiguration {
   ignoreProcesses?: string[];
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
+  fullscreenAffinity?: string;
 }
 
 declare interface WindowRect {

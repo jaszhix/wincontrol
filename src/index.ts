@@ -182,10 +182,20 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 }
 
 const parseProfilesConfig = (appConfig: AppConfiguration): void => {
-  const {profiles, ignoreProcesses} = appConfig;
+  const {profiles, ignoreProcesses, affinities, fullscreenAffinity} = appConfig;
   const results = [];
   const endResults = [];
   let defaultProfile: ProcessConfiguration = null;
+
+  if (fullscreenAffinity) {
+    const refAffinity = find(affinities, (obj) => obj.name === fullscreenAffinity)
+
+    if (!refAffinity) {
+      throw new Error(`fullscreenAffinity does not reference a defined affinity preset name.`);
+    }
+
+    [fullAffinity, /* graph */] = getAffinityForCoreRanges(refAffinity.ranges, useHT, coreCount);
+  }
 
   for (let i = 0, len = ignoreProcesses.length; i < len; i++) {
     ignoreProcesses[i] = ignoreProcesses[i].toLowerCase();
@@ -681,7 +691,8 @@ loadConfiguration = (): void => {
           fullscreenPriority: true,
           ignoreProcesses: [],
           profiles: [],
-          affinities: []
+          affinities: [],
+          fullscreenAffinity: '',
         };
       }
 
