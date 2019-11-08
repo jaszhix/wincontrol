@@ -138,7 +138,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
       }
 
       if (thenValueIsKeyedObject) {
-        let keys = Object.keys(profile.if.then);
+        let keys = Object.keys(profile).concat(Object.keys(profile.if.then));
 
         validateAndParseProfile(profile.if.then, index, false);
 
@@ -400,6 +400,14 @@ enforcePolicy = (processList): void => {
               case (typeof profile.if.then === 'object'):
                 isReplacedBy = profile.if.then.name ? profile.if.then.name : 'override';
                 profile = Object.assign({}, profile, profile.if.then);
+
+                if (profile.terminationDelay && !profile.if.then.terminationDelay) {
+                  profile.terminationDelay = null;
+                }
+
+                if (profile.suspensionDelay && !profile.if.then.suspensionDelay) {
+                  profile.suspensionDelay = null;
+                }
 
                 if (profile.suspensionDelay) {
                   tempSuspendedPids.push(pid);
