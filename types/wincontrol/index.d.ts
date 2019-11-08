@@ -38,6 +38,7 @@ declare interface AppConfiguration {
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
   fullscreenAffinity?: string;
+  winControlAffinity?: string;
 }
 
 declare interface WindowRect {

@@ -41,6 +41,7 @@ import log from './log';
 let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
+let selfAffinity: number = null;
 let failedPids = [];
 let tempSuspendedPids = [];
 let fullscreenOptimizedPid = 0;
@@ -182,7 +183,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 }
 
 const parseProfilesConfig = (appConfig: AppConfiguration): void => {
-  const {profiles, ignoreProcesses, affinities, fullscreenAffinity} = appConfig;
+  const {profiles, ignoreProcesses, affinities, fullscreenAffinity, winControlAffinity} = appConfig;
   const results = [];
   const endResults = [];
   let defaultProfile: ProcessConfiguration = null;
@@ -195,6 +196,19 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
     }
 
     [fullAffinity, /* graph */] = getAffinityForCoreRanges(refAffinity.ranges, useHT, coreCount);
+  }
+
+  if (winControlAffinity) {
+    const refAffinity = find(affinities, (obj) => obj.name === winControlAffinity)
+
+    if (!refAffinity) {
+      throw new Error(`winControlAffinity does not reference a defined affinity preset name.`);
+    }
+
+    [selfAffinity, /* graph */] = getAffinityForCoreRanges(refAffinity.ranges, useHT, coreCount);
+
+    // Set wincontrol's affinity
+    setProcessorAffinity(process.pid, selfAffinity);
   }
 
   for (let i = 0, len = ignoreProcesses.length; i < len; i++) {
@@ -693,6 +707,7 @@ loadConfiguration = (): void => {
           profiles: [],
           affinities: [],
           fullscreenAffinity: '',
+          winControlAffinity: '',
         };
       }
 
