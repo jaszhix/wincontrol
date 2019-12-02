@@ -93,6 +93,19 @@ const tryFn = function(fn: Function, errCb?: Function): any {
   }
 };
 
+const mergeObjects = (obj1, obj2) => {
+  const keys = Object.keys(obj1);
+  const obj = {...obj1};
+
+  for (let i = 0, len = keys.length; i < len; i++) {
+    let key = keys[i];
+
+    if (obj2[key]) obj[key] = obj2[key];
+  }
+
+  return obj;
+}
+
 export {
   each,
   rEach,
@@ -101,5 +114,6 @@ export {
   filter,
   map,
   merge,
-  tryFn
+  tryFn,
+  mergeObjects
 };

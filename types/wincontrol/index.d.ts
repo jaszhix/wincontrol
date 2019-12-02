@@ -22,7 +22,7 @@ declare interface ProcessConfiguration {
   suspensionDelay?: number;
   resumeDelay?: number;
   processes?: string[];
-  default?: boolean;
+  type?: 'standard' | 'fallback' | 'fullscreen';
   if?: Conditional;
 }
 
@@ -33,11 +33,9 @@ declare interface AppConfiguration {
   consoleLogging?: boolean;
   logLevel?: string;
   detectConfigChange?: boolean;
-  fullscreenPriority?: boolean;
   ignoreProcesses?: string[];
   affinities: AffinityConfiguration[];
   profiles: ProcessConfiguration[];
-  fullscreenAffinity?: string;
   winControlAffinity?: string;
 }
 

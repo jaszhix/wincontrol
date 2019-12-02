@@ -35,7 +35,7 @@ import {
   readYamlFile
 } from './utils';
 import {installTaskSchedulerTemplate} from './configuration';
-import {find} from './lang';
+import {find, mergeObjects} from './lang';
 import log from './log';
 
 let physicalCoreCount: number;
@@ -89,7 +89,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 
         processesConfigured.push(processName);
       }
-    } else if (!cmd && !profile.default) {
+    } else if (!cmd && (!profile.type || profile.type === 'standard')) {
       throw new Error(`[${name}] Misconfiguration found - missing required property 'processes'.`);
     } else {
       profile.processes = [];
@@ -183,20 +183,11 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
 }
 
 const parseProfilesConfig = (appConfig: AppConfiguration): void => {
-  const {profiles, ignoreProcesses, affinities, fullscreenAffinity, winControlAffinity} = appConfig;
-  const results = [];
+  const {profiles, ignoreProcesses, affinities, winControlAffinity} = appConfig;
   const endResults = [];
-  let defaultProfile: ProcessConfiguration = null;
-
-  if (fullscreenAffinity) {
-    const refAffinity = find(affinities, (obj) => obj.name === fullscreenAffinity)
-
-    if (!refAffinity) {
-      throw new Error(`fullscreenAffinity does not reference a defined affinity preset name.`);
-    }
-
-    [fullAffinity, /* graph */] = getAffinityForCoreRanges(refAffinity.ranges, useHT, coreCount);
-  }
+  let results = [];
+  let fallbackProfile: ProcessConfiguration = null;
+  let fullscreenProfile: ProcessConfiguration = null;
 
   if (winControlAffinity) {
     const refAffinity = find(affinities, (obj) => obj.name === winControlAffinity)
@@ -216,19 +207,46 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
   }
 
   for (let i = 0, len = profiles.length; i < len; i++) {
-    const profile = validateAndParseProfile(profiles[i], i, true);
+    const profile: ProcessConfiguration = validateAndParseProfile(profiles[i], i, true);
+    let shouldContinue = false;
 
-    if (profile.default) {
-      if (defaultProfile) {
-        throw new Error(`[${profile.name}] Multiple default profiles found. Only one profile can be set as default in a configuration.`);
+    switch (profile.type) {
+      case 'standard':
+        break;
+
+      case 'fallback': {
+        if (fallbackProfile) {
+          throw new Error(`[${profile.name}] Multiple fallback profiles found. Only one profile can be set as fallback in a configuration.`);
+        }
+
+        fallbackProfile = profile;
+        shouldContinue = true;
+
+        break;
       }
 
-      defaultProfile = profile;
-      continue;
+      case 'fullscreen': {
+        if (fullscreenProfile) {
+          throw new Error(`[${profile.name}] Multiple fullscreen profiles found. Only one profile can be designated for fullscreen optimization in a configuration.`);
+        }
+
+        fullscreenProfile = profile;
+        fullAffinity = profile.affinity;
+        shouldContinue = true;
+
+        break;
+      }
+
+      default:
+        if (profile.type != null) {
+          throw new Error(`[${profile.name}] The profile type must be one of the following values: 'standard', 'fallback', or 'fullscreen'.`);
+        }
     }
 
+    if (shouldContinue) continue;
+
     // Move profiles containing the if property to the end of the results array.
-    // The default property should be the last item if found.
+    // The fallback profile should be the last item if found.
     if (profile.if) {
       endResults.push(profile);
     } else {
@@ -236,9 +254,17 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
     }
   }
 
-  appConfig.profiles = results
-    .concat(endResults)
-    .concat([defaultProfile]);
+  results = results.concat(endResults);
+
+  if (fallbackProfile) {
+    results = results.concat([fallbackProfile]);
+  }
+
+  if (fullscreenProfile) {
+    results = results.concat([fullscreenProfile]);
+  }
+
+  appConfig.profiles = results;
 }
 
 const attemptProcessModification = (func: Function, name: string, cmdline: string, id: number, value: number): boolean => {
@@ -339,7 +365,7 @@ enforcePolicy = (processList): void => {
 
     for (let i = 0, len = profiles.length; i < len; i++) {
       let profile = profiles[i];
-      let {name, processes, cmd, graph} = profile;
+      let {name, processes, cmd} = profile;
       let processMatched = processes.indexOf(psName) > -1;
       let cmdAffected: string;
 
@@ -358,17 +384,60 @@ enforcePolicy = (processList): void => {
         }
       }
 
-      if (!processMatched && !usePerformancePriorities && profile.default) processMatched = true;
+      if (!processMatched && ((!usePerformancePriorities && profile.type === 'fallback') || profile.type === 'fullscreen')) processMatched = true;
 
       if (processMatched || usePerformancePriorities || isFullscreenOptimized) {
+        if (isActive) {
+          if (profile.affinity && profile.affinity !== fullAffinity) {
+            profile = Object.assign({}, profile, {
+              affinity: fullAffinity,
+            });
+          }
+        }
+
+        // Handle fullscreen priority increase. If the active window is taking up exactly
+        // the dimensions of the primary monitor, then we will give it high priority.
+        // TODO: This doesn't work with some games, so there is more needing to be done
+        // as far as detecting the window/monitor rects.
+        if (profile.type === 'fullscreen') {
+          switch (true) {
+            case (usePerformancePriorities && !fullscreenOptimizedPid):
+              [/* processAffinity */, systemAffinity] = getProcessorAffinity(pid);
+
+              fullscreenOriginalState = {
+                cpuPriority: getPriorityClass(pid),
+                affinity: systemAffinity,
+              };
+
+              log.info(`Priority boosting fullscreen window ${psName} (${pid})`);
+
+              fullscreenOptimizedPid = pid;
+              fullscreenPriorityBoostAffected = true;
+              break;
+
+            case (isFullscreenOptimized && !usePerformancePriorities):
+              profile = Object.assign({}, profile, {
+                affinity: fullscreenOriginalState.affinity,
+                cpuPriority: fullscreenOriginalState.cpuPriority,
+                pagePriority: pagePriorityMap.normal,
+                ioPriority: ioPriorityMap.normal,
+              });
+
+              log.info(`Resetting priority boost for previously fullscreen window ${psName} (${pid})`);
+
+              fullscreenOptimizedPid = 0;
+              fullscreenPriorityBoostAffected = true;
+              fullscreenOriginalState = null;
+              break;
+          }
+        }
+
         if (profile.if) {
           let useCondition = false;
 
           switch (profile.if.condition) {
             case 'running':
               for (let i = 0, len = processList.length; i < len; i++) {
-                processList[i]
-
                 if (profile.if.forProcesses.indexOf(processList[i].name) > -1) {
                   useCondition = true;
                   if (logging) conditionReason = `${processList[i].name} is running`;
@@ -376,7 +445,7 @@ enforcePolicy = (processList): void => {
               }
               break;
             case 'fullscreenOverrideActive':
-              if (appConfig.fullscreenPriority && isValidActiveFullscreenApp) {
+              if (isValidActiveFullscreenApp) {
                 // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
                 if (profile.if.forProcesses && profile.if.forProcesses.indexOf(activeProcess.name) === -1) {
                   break;
@@ -399,7 +468,8 @@ enforcePolicy = (processList): void => {
               // replace rule
               case (typeof profile.if.then === 'object'):
                 isReplacedBy = profile.if.then.name ? profile.if.then.name : 'override';
-                profile = Object.assign({}, profile, profile.if.then);
+
+                profile = mergeObjects(profile, profile.if.then);
 
                 if (profile.terminationDelay && !profile.if.then.terminationDelay) {
                   profile.terminationDelay = null;
@@ -424,58 +494,6 @@ enforcePolicy = (processList): void => {
               resumeDelay = 1;
               tempSuspendedPids.splice(tempSuspendedIndex, 1);
             }
-          }
-        }
-
-        if (isActive) {
-          if (profile.affinity && profile.affinity !== fullAffinity) {
-            profile = Object.assign({}, profile, {
-              affinity: fullAffinity,
-            });
-          }
-        }
-
-        // Handle fullscreen priority increase. If the active window is taking up exactly
-        // the dimensions of the primary monitor, then we will give it high priority.
-        // TODO: This doesn't work with some games, so there is more needing to be done
-        // as far as detecting the window/monitor rects.
-        if (appConfig.fullscreenPriority) {
-          switch (true) {
-            case (usePerformancePriorities && !fullscreenOptimizedPid):
-              [/* processAffinity */, systemAffinity] = getProcessorAffinity(pid);
-
-              fullscreenOriginalState = {
-                cpuPriority: getPriorityClass(pid),
-                affinity: systemAffinity,
-              };
-
-              profile = Object.assign({}, profile, {
-                affinity: fullAffinity,
-                cpuPriority: cpuPriorityMap.high,
-                pagePriority: pagePriorityMap.normal,
-                ioPriority: ioPriorityMap.normal,
-              });
-
-              log.info(`Priority boosting fullscreen window ${psName} (${pid})`);
-
-              fullscreenOptimizedPid = pid;
-              fullscreenPriorityBoostAffected = true;
-              break;
-            case (isFullscreenOptimized && !usePerformancePriorities):
-              profile = Object.assign({}, profile, {
-                affinity: fullscreenOriginalState.affinity,
-                cpuPriority: fullscreenOriginalState.cpuPriority,
-                pagePriority: pagePriorityMap.normal,
-                ioPriority: ioPriorityMap.normal,
-              });
-
-              log.info(`Resetting priority boost for previously fullscreen window ${psName} (${pid})`);
-
-              fullscreenOptimizedPid = 0;
-              fullscreenPriorityBoostAffected = true;
-              fullscreenOriginalState = null;
-
-              break;
           }
         }
 
@@ -532,7 +550,7 @@ enforcePolicy = (processList): void => {
 
           if (affinity) {
             refLogItem.affinityName = profile.affinityName;
-            refLogItem.graph = graph;
+            refLogItem.graph = profile.graph;
           }
         }
 
@@ -657,15 +675,23 @@ enforcePolicy = (processList): void => {
   timeout = setTimeout(runRoutine, interval);
 };
 
-const init = () => {
-  // Lower the priority of wincontrol to idle
-  setPriorityClass(process.pid, cpuPriorityMap.idle);
+const getConfigInfo = () => {
+  const {profiles} = appConfig;
+  let fullscreenProfilePresent = false, fallbackProfilePresent = false;
+
+  for (let i = 0, len = appConfig.profiles.length; i < len; i++) {
+    const profile = profiles[i];
+
+    if (profile.type === 'fallback') fallbackProfilePresent = true;
+    if (profile.type === 'fullscreen') fullscreenProfilePresent = true;
+  }
 
   log.important('====================== Config info ======================');
   log.important(`Configuration file: ${appConfigYamlPath}`);
   log.important(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   log.important(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
-  log.important(`Using high fullscreen window priority: ${appConfig.fullscreenPriority ? '✓' : '✗'}`);
+  log.important(`Fallback profile present: ${fallbackProfilePresent ? '✓' : '✗'}`);
+  log.important(`Fullscreen profile present: ${fullscreenProfilePresent ? '✓' : '✗'}`);
   log.important(`Physical core count: ${physicalCoreCount}`);
   log.important(`Enforcement interval: ${appConfig.interval}ms`);
   log.important(`CPU affinity presets: ${appConfig.affinities.length}`);
@@ -673,6 +699,13 @@ const init = () => {
   log.important(`Processes configured: ${processesConfigured.length}`);
   log.important('=========================================================');
   log.close();
+}
+
+const init = () => {
+  // Lower the priority of wincontrol to idle
+  setPriorityClass(process.pid, cpuPriorityMap.idle);
+
+  getConfigInfo();
 
   runRoutine(false);
 
@@ -710,11 +743,9 @@ loadConfiguration = (): void => {
           consoleLogging: false,
           logLevel: 'info',
           detectConfigChange: true,
-          fullscreenPriority: true,
           ignoreProcesses: [],
           profiles: [],
           affinities: [],
-          fullscreenAffinity: '',
           winControlAffinity: '',
         };
       }

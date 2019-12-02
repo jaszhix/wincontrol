@@ -9,8 +9,6 @@ detailedLogging: false
 consoleLogging: false
 logLevel: info
 detectConfigChange: true
-fullscreenPriority: true
-
 # Processes that will always be ignored.
 # These examples in particular are protected system processes, and can't be modified.
 ignoreProcesses:
@@ -47,13 +45,21 @@ affinities:
     ranges: [[0, 13]]
 
 profiles:
-  # A profile with the default property with its value set to true will have all other processes
-  # not listed prioritized according to its rules. This only works explicitly.
+  # A profile with the 'fallback' type will have all other processes listed prioritized according to
+  # its rules. This only works explicitly.
   - name: default
     affinity: full
     cpuPriority: belowNormal
     ioPriority: low
-    default: true
+    type: fallback
+
+  # A profile with the 'fullscreen' type will be the designated profile enforced for fullscreen apps.
+  - name: fullscreen
+    affinity: full
+    cpuPriority: high
+    ioPriority: normal
+    pagePriority: normal
+    type: fullscreen
 
   - name: servicesPriorityOnlyLow
     affinity: full
@@ -98,20 +104,3 @@ profiles:
         cpuPriority: belowNormal
         pagePriority: belowNormal
         ioPriority: belowNormal
-
-  # Example using the if: ... running condition
-  # If Signal is running while a backup is occurring, later restoring from that backup will corrupt
-  # Signal's cache, and will need to be deleted and relinked with the account.
-  # This works around that by killing Signal once Macrium Reflect (backup application) is running.
-  - name: signal
-    affinity: suppressed
-    cpuPriority: idle
-    ioPriority: low
-    processes:
-      - Signal
-    if:
-      condition: 'running'
-      forProcesses:
-        - reflectbin
-      then:
-        terminationDelay: 1
