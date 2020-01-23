@@ -22,7 +22,7 @@ fs.ensureDir('./staging')
   .then(() => copyFile('./bin/elevate.exe', './staging/elevate.exe'))
   .then(() => copyFile('./bin/start.vbs', './staging/start.vbs'))
   .then(() => copyFile('./bin/runWinControl.vbs', './staging/runWinControl.vbs'))
-  .then(() => exec(['./dist/index.js', '-t', 'node10-win', '-o', './staging/wincontrol']))
+  .then(() => exec(['./dist/index.js', '-t', 'node12-win', '-o', './staging/wincontrol']))
   .then(() => {
     const output = fs.createWriteStream(`./release/wincontrol-${packageJSON.version}.zip`);
     // @ts-ignore
