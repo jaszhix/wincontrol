@@ -1,6 +1,8 @@
 import {parseProfilesConfig} from './index';
 
-import {getAffinityForCoreRanges, readYamlFile} from './utils';
+import {setProcessorAffinity} from './nt';
+import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
+import {coreCount} from './constants';
 
 test('parseProfilesConfig: can parse profiles', async (done) => {
   const appConfig = await readYamlFile('./test/config.yaml');
@@ -68,4 +70,34 @@ test('getAffinityForCoreRanges: converts 2D arrays of core ranges to Windows com
 
   expect(affinity).toBe(255);
   expect(graph).toBe('[ 0| 1| 2| 3]');
+});
+
+const testAffinity = async (ranges) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+  let [affinity, graph] = getAffinityForCoreRanges(ranges, true, coreCount);
+
+  console.log(graph);
+
+  let success = setProcessorAffinity(pid, affinity);
+
+  expect(success).toBe(true);
+
+  let actualAffinity = parseInt(
+    (await exc('powershell "Get-Process notepad | Select-Object ProcessorAffinity"'))
+    .match(/\d+/g)[0]
+  );
+
+
+  expect(affinity).toBe(actualAffinity);
+
+  return await exc('powershell "Stop-Process -Name notepad"');
+}
+
+test('setProcessorAffinity: can set processor affinity', async (done) => {
+  await testAffinity([[0, Math.max(1, Math.round(coreCount / 2))]]);
+  await testAffinity([[0, Math.max(1, Math.round(coreCount / 4))]]);
+  await testAffinity([[0, Math.max(1, Math.round(coreCount / 6))]]);
+  await testAffinity([[0, Math.max(1, Math.round(coreCount / 8))]]);
+
+  done();
 });
