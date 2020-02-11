@@ -4,9 +4,11 @@ import {
   setProcessorAffinity,
   getPriorityClass,
   setPriorityClass,
+  getPagePriority,
+  setPagePriority,
 } from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
-import {coreCount, PSPriorityMap} from './constants';
+import {coreCount, PSPriorityMap, pagePriorityMap} from './constants';
 
 test('parseProfilesConfig: can parse profiles', async (done) => {
   const appConfig = await readYamlFile('./test/config.yaml');
@@ -129,6 +131,30 @@ test('setPriorityClass: can set CPU priority, and be retrieved with getPriorityC
   await testCPUPriority('AboveNormal');
   await testCPUPriority('High');
   await testCPUPriority('RealTime');
+
+  done();
+});
+
+const testPagePriority = async (priority: string) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+
+  let success = setPagePriority(pid, pagePriorityMap[priority]);
+
+  expect(success).toBe(true);
+
+  let actualPagePriority = getPagePriority(pid);
+
+  expect(actualPagePriority).toBe(pagePriorityMap[priority]);
+
+  return await exc('powershell "Stop-Process -Name notepad"');
+}
+
+test('setPagePriority: can set page priority, and be retrieved with getPagePriority', async (done) => {
+  await testPagePriority('idle');
+  await testPagePriority('low');
+  await testPagePriority('medium');
+  await testPagePriority('belowNormal');
+  await testPagePriority('normal');
 
   done();
 });

@@ -102,6 +102,9 @@ const kernel32 = new Library('kernel32', {
   // https://docs.microsoft.com/en-us/windows/desktop/api/winbase/nf-winbase-setprocessaffinitymask
   SetProcessAffinityMask: ['int', ['pointer', 'ulonglong']],
 
+  // https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocessinformation
+  GetProcessInformation: ['int', ['pointer', 'int', MemoryPriorityInformationType, 'uint32']],
+
   // https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-setprocessinformation
   SetProcessInformation: ['int', ['pointer', 'int', MemoryPriorityInformationType, 'uint32']],
 
@@ -257,15 +260,6 @@ const getActiveWindow = function(): WindowInfo {
   return getBasicWindowInfo(user32.GetForegroundWindow());
 };
 
-const getPriorityClass = function(id: number): number {
-  const handle = getHandleForProcessId(id);
-  const priority = kernel32.GetPriorityClass(handle);
-
-  kernel32.CloseHandle(handle);
-
-  return priority;
-};
-
 const getProcessorAffinity = function(id: number): any[] {
   const handle = getHandleForProcessId(id);
   let processAffinity = ref.alloc('uint32');
@@ -282,6 +276,15 @@ const getProcessorAffinity = function(id: number): any[] {
   kernel32.CloseHandle(handle);
 
   return [processAffinity, systemAffinity];
+};
+
+const getPriorityClass = function(id: number): number {
+  const handle = getHandleForProcessId(id);
+  const priority = kernel32.GetPriorityClass(handle);
+
+  kernel32.CloseHandle(handle);
+
+  return priority;
 };
 
 const setPriorityClass = function(id: number, mask: number): boolean {
@@ -312,6 +315,23 @@ const setProcessorAffinity = function(id: number, mask: number): boolean {
   }
 
   return true;
+};
+
+const getPagePriority = function(id: number): number {
+  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const pagePriorityInfo = new MemoryPriorityInformation();
+  const ptr = ref.alloc(MemoryPriorityInformation, pagePriorityInfo);
+  const status = kernel32.GetProcessInformation(handle, 0, ptr, 4);
+  const priority = ref.get(ptr)['ref.buffer'].toJSON().data[0];
+
+  kernel32.CloseHandle(handle);
+
+  if (!status) {
+    log.warning('Failed to get page priority for process:', id, kernel32.GetLastError());
+    return 0;
+  }
+
+  return priority;
 };
 
 const setPagePriority = function(id: number, MemoryPriority: number): boolean {
@@ -399,6 +419,7 @@ export {
   getProcessorAffinity,
   setPriorityClass,
   setProcessorAffinity,
+  getPagePriority,
   setPagePriority,
   setIOPriority,
   terminateProcess,
