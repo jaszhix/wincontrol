@@ -1,8 +1,12 @@
 import {parseProfilesConfig} from './index';
 
-import {setProcessorAffinity} from './nt';
+import {
+  setProcessorAffinity,
+  getPriorityClass,
+  setPriorityClass,
+} from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
-import {coreCount} from './constants';
+import {coreCount, PSPriorityMap} from './constants';
 
 test('parseProfilesConfig: can parse profiles', async (done) => {
   const appConfig = await readYamlFile('./test/config.yaml');
@@ -87,8 +91,7 @@ const testAffinity = async (ranges) => {
     .match(/\d+/g)[0]
   );
 
-
-  expect(affinity).toBe(actualAffinity);
+  expect(actualAffinity).toBe(affinity);
 
   return await exc('powershell "Stop-Process -Name notepad"');
 }
@@ -101,3 +104,37 @@ test('setProcessorAffinity: can set processor affinity', async (done) => {
 
   done();
 });
+
+const testCPUPriority = async (priority: string) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+
+  let success = setPriorityClass(pid, PSPriorityMap[priority]);
+
+  expect(success).toBe(true);
+
+  let actualCPUPriority = (await exc('powershell "Get-Process notepad | Select-Object PriorityClass"'))
+    .match(/(Idle|BelowNormal|Normal|AboveNormal|High|RealTime)/g)[0]
+
+  expect(actualCPUPriority).toBe(priority);
+
+  expect(getPriorityClass(pid)).toBe(PSPriorityMap[priority]);
+
+  return await exc('powershell "Stop-Process -Name notepad"');
+}
+
+test('setPriorityClass: can set CPU priority, and be retrieved with getPriorityClass', async (done) => {
+  await testCPUPriority('Idle');
+  await testCPUPriority('BelowNormal');
+  await testCPUPriority('Normal');
+  await testCPUPriority('AboveNormal');
+  await testCPUPriority('High');
+  await testCPUPriority('RealTime');
+
+  done();
+});
+
+afterAll(async () => {
+  try {
+    await exc('powershell "Stop-Process -Name notepad"');
+  } catch (e) {}
+})

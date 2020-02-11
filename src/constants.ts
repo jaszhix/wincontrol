@@ -36,6 +36,15 @@ enum cpuPriorityMap {
   processModeBackgroundBegin = 1048576
 };
 
+enum PSPriorityMap {
+  Idle = 64,
+  BelowNormal = 16384,
+  Normal = 32,
+  AboveNormal = 32768,
+  High = 128,
+  RealTime = 256,
+};
+
 enum pagePriorityMap {
   idle = 1,
   low = 2,
@@ -139,6 +148,7 @@ export {
   ifConditionOptions,
   falsePositiveFullscreenApps,
   cpuPriorityMap,
+  PSPriorityMap,
   pagePriorityMap,
   ioPriorityMap,
   LogLevel,
