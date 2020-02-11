@@ -7,7 +7,9 @@
   "scripts": {
     "start": "cross-env NODE_ENV=development node --inspect -r ts-node/register ./src/index.ts",
     "build": "ts-node ./build.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "cross-env TEST_ENV=1 jest --coverage=false --passWithNoTests --detectOpenHandles",
+    "test:watch": "cross-env TEST_ENV=1 jest --coverage=false --passWithNoTests --watch",
+    "coverage": "cross-env TEST_ENV=1 jest --coverage --passWithNoTests"
   },
   "author": "",
   "license": "MIT",
@@ -28,6 +30,7 @@
   },
   "devDependencies": {
     "@types/ffi": "^0.2.2",
+    "@types/jest": "^25.1.2",
     "@types/lodash": "^4.14.149",
     "@types/node": "^13.7.0",
     "@types/ref": "0.0.28",
@@ -35,7 +38,10 @@
     "cross-env": "^7.0.0",
     "del": "^5.1.0",
     "eslint": "^6.8.0",
+    "jest": "^25.1.0",
+    "jest-extended": "^0.11.5",
     "pkg": "^4.4.3",
+    "ts-jest": "^25.2.0",
     "ts-node": "^8.6.2",
     "typescript": "^3.7.5"
   },

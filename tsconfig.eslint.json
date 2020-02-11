@@ -3,6 +3,7 @@
   "include": [
     "src/**/**/*.ts",
     "types/wincontrol",
-    "build.ts"
+    "build.ts",
+    "jest.config.js"
   ]
 }

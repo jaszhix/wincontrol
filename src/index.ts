@@ -56,7 +56,7 @@ let now: number;
 let enforcePolicy: (processList: any[]) => void;
 let loadConfiguration: () => void;
 
-const validateAndParseProfile = (profile, index, isRootProfile = true) => {
+const validateAndParseProfile = (appConfig: AppConfiguration, profile, index, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
   const {name, cpuPriority, pagePriority, ioPriority, cmd} = profile;
 
@@ -140,7 +140,7 @@ const validateAndParseProfile = (profile, index, isRootProfile = true) => {
       if (thenValueIsKeyedObject) {
         let keys = Object.keys(profile).concat(Object.keys(profile.if.then));
 
-        validateAndParseProfile(profile.if.then, index, false);
+        validateAndParseProfile(appConfig, profile.if.then, index, false);
 
         if (keys.indexOf('terminationDelay') === -1 && keys.indexOf('suspensionDelay') === -1) {
           for (let i = 0, len = keys.length; i < len; i++) {
@@ -207,7 +207,7 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
   }
 
   for (let i = 0, len = profiles.length; i < len; i++) {
-    const profile: ProcessConfiguration = validateAndParseProfile(profiles[i], i, true);
+    const profile: ProcessConfiguration = validateAndParseProfile(appConfig, profiles[i], i, true);
     let shouldContinue = false;
 
     switch (profile.type) {
@@ -780,4 +780,8 @@ loadConfiguration = (): void => {
     });
 }
 
-loadConfiguration();
+if (!process.env.TEST_ENV) {
+  loadConfiguration();
+}
+
+export {parseProfilesConfig};
