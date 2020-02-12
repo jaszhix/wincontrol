@@ -35,7 +35,7 @@ class Log {
   ) {
     this.location = location;
     this.fileNamePrefix = fileNamePrefix;
-    this.enableConsoleLog = enableConsoleLog;
+    this.enableConsoleLog = enableConsoleLog || process.env.TEST_ENV != null;
   }
 
   get fileName() {

@@ -6,9 +6,11 @@ import {
   setPriorityClass,
   getPagePriority,
   setPagePriority,
+  getIOPriority,
+  setIOPriority,
 } from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
-import {coreCount, PSPriorityMap, pagePriorityMap} from './constants';
+import {coreCount, PSPriorityMap, pagePriorityMap, ioPriorityMap} from './constants';
 
 test('parseProfilesConfig: can parse profiles', async (done) => {
   const appConfig = await readYamlFile('./test/config.yaml');
@@ -159,8 +161,30 @@ test('setPagePriority: can set page priority, and be retrieved with getPagePrior
   done();
 });
 
+const testIOPriority = async (priority: string) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+
+  let success = setIOPriority(pid, ioPriorityMap[priority]);
+
+  expect(success).toBe(true);
+
+  let actualIOPriority = getIOPriority(pid);
+
+  expect(actualIOPriority).toBe(ioPriorityMap[priority]);
+
+  return await exc('powershell "Stop-Process -Name notepad"');
+}
+
+test('setIOPriority: can set IO priority, and be retrieved with getIOPriority', async (done) => {
+  await testIOPriority('idle');
+  await testIOPriority('low');
+  await testIOPriority('normal');
+
+  done();
+});
+
 afterAll(async () => {
   try {
     await exc('powershell "Stop-Process -Name notepad"');
   } catch (e) {}
-})
+});

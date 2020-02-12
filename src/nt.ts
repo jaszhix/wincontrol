@@ -117,6 +117,7 @@ const kernel32 = new Library('kernel32', {
 
 const ntdll = new Library('ntdll.dll', {
   // Undocumented?
+  NtQueryInformationProcess: ['ulong', ['pointer', 'int' /* enum */, 'int *', 'ulong']],
   NtSetInformationProcess: ['ulong', ['pointer', 'int' /* enum */, 'int *', 'ulong']],
   NtSuspendProcess: ['int', ['pointer']],
   NtResumeProcess: ['int', ['pointer']]
@@ -350,6 +351,27 @@ const setPagePriority = function(id: number, MemoryPriority: number): boolean {
   return true;
 };
 
+const getIOPriority = function(id: number): number {
+  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const ioPriorityValue = ref.alloc('int', 0);
+  const status = ntdll.NtQueryInformationProcess(
+    handle,
+    PROCESS_INFORMATION_CLASS.ProcessIoPriority,
+    ioPriorityValue,
+    ioPriorityValue.length
+  );
+  const priority = ref.get(ioPriorityValue);
+
+  kernel32.CloseHandle(handle);
+
+  if (status) {
+    log.warning('Failed to get I/O priority for process:', id, kernel32.GetLastError(), status);
+    return 0;
+  }
+
+  return priority;
+};
+
 const setIOPriority = function(id: number, ioPriority: number): boolean {
   const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
   const ioPriorityValue = ref.alloc('int', ioPriority);
@@ -421,6 +443,7 @@ export {
   setProcessorAffinity,
   getPagePriority,
   setPagePriority,
+  getIOPriority,
   setIOPriority,
   terminateProcess,
   suspendProcess,
