@@ -11,6 +11,7 @@ import {
   setIOPriority,
   terminateProcess,
   suspendProcess,
+  resumeProcess,
 } from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
 import {coreCount, PSPriorityMap, pagePriorityMap, ioPriorityMap} from './constants';
@@ -209,13 +210,40 @@ test('suspendProcess: can suspend process', async (done) => {
 
   expect(success).toBe(true);
 
-  let threads = (await exc('powershell "(Get-Process -Name notepad).Threads"')).split(EOL);
+  let threads = (await exc(`powershell "(Get-Process -Id ${pid}).Threads"`)).split(EOL);
 
   for (let i = 0, len = threads.length; i < len; i++) {
     let [key, value] = threads[i].split(':');
 
     if (key.trim() === 'WaitReason') {
       expect(value.trim()).toBe('Suspended');
+    }
+  }
+
+  done();
+});
+
+test('resumeProcess: can resume process', async (done) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+  let success = suspendProcess(pid);
+
+  expect(success).toBe(true);
+
+  success = resumeProcess(pid);
+
+  expect(success).toBe(true);
+
+  let threads = (await exc(`powershell "(Get-Process -Id ${pid}).Threads"`)).split(EOL);
+  let validWaitReasons = [
+    'UserRequest',
+    'EventPairLow'
+  ];
+
+  for (let i = 0, len = threads.length; i < len; i++) {
+    let [key, value] = threads[i].split(':');
+
+    if (key.trim() === 'WaitReason') {
+      expect(validWaitReasons.includes(value.trim())).toBe(true);
     }
   }
 

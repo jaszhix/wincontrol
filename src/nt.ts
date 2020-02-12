@@ -14,6 +14,7 @@ import {
   PROCESS_ALL_ACCESS,
   PROCESS_SET_INFORMATION,
   PROCESS_QUERY_LIMITED_INFORMATION,
+  PROCESS_SUSPEND_RESUME,
   MONITOR_DEFAULTTOPRIMARY,
   PROCESS_INFORMATION_CLASS,
 } from './constants';
@@ -407,7 +408,7 @@ const terminateProcess = function(id: number): boolean {
 };
 
 const suspendProcess = function(id: number): boolean {
-  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const handle = getHandleForProcessId(id, PROCESS_SUSPEND_RESUME);
   const status = ntdll.NtSuspendProcess(handle);
 
   kernel32.CloseHandle(handle);
@@ -421,7 +422,7 @@ const suspendProcess = function(id: number): boolean {
 };
 
 const resumeProcess = function(id: number): boolean {
-  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const handle = getHandleForProcessId(id, PROCESS_SUSPEND_RESUME);
   const status = ntdll.NtResumeProcess(handle);
 
   kernel32.CloseHandle(handle);
