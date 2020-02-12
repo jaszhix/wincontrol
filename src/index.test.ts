@@ -2,6 +2,7 @@ import {EOL} from 'os';
 import {parseProfilesConfig} from './index';
 
 import {
+  getActiveWindow,
   getProcessorAffinity,
   setProcessorAffinity,
   getPriorityClass,
@@ -225,6 +226,8 @@ test('suspendProcess: can suspend process', async (done) => {
     }
   }
 
+  await exc(`powershell "Stop-Process -Id ${pid}"`);
+
   done();
 });
 
@@ -252,7 +255,23 @@ test('resumeProcess: can resume process', async (done) => {
     }
   }
 
+  await exc(`powershell "Stop-Process -Id ${pid}"`);
+
   done();
+});
+
+test('getActiveWindow: can detect top foreground window', async (done) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+
+  setTimeout(async () => {
+    let activeWindow = getActiveWindow();
+
+    expect(activeWindow.pid).toBe(pid);
+
+    await exc(`powershell "Stop-Process -Id ${pid}"`);
+
+    done();
+  }, 0);
 });
 
 afterAll(async () => {
