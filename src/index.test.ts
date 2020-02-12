@@ -95,13 +95,13 @@ const testAffinity = async (ranges) => {
   expect(success).toBe(true);
 
   let actualAffinity = parseInt(
-    (await exc('powershell "Get-Process notepad | Select-Object ProcessorAffinity"'))
+    (await exc(`powershell "Get-Process -Id ${pid} | Select-Object ProcessorAffinity"`))
     .match(/\d+/g)[0]
   );
 
   expect(actualAffinity).toBe(affinity);
 
-  return await exc('powershell "Stop-Process -Name notepad"');
+  return await exc(`powershell "Stop-Process -Id ${pid}"`);
 }
 
 test('setProcessorAffinity: can set processor affinity', async (done) => {
@@ -120,14 +120,14 @@ const testCPUPriority = async (priority: string) => {
 
   expect(success).toBe(true);
 
-  let actualCPUPriority = (await exc('powershell "Get-Process notepad | Select-Object PriorityClass"'))
+  let actualCPUPriority = (await exc(`powershell "Get-Process -Id ${pid} | Select-Object PriorityClass"`))
     .match(/(Idle|BelowNormal|Normal|AboveNormal|High|RealTime)/g)[0]
 
   expect(actualCPUPriority).toBe(priority);
 
   expect(getPriorityClass(pid)).toBe(PSPriorityMap[priority]);
 
-  return await exc('powershell "Stop-Process -Name notepad"');
+  return await exc(`powershell "Stop-Process -Id ${pid}"`);
 }
 
 test('setPriorityClass: can set CPU priority, and be retrieved with getPriorityClass', async (done) => {
@@ -152,7 +152,7 @@ const testPagePriority = async (priority: string) => {
 
   expect(actualPagePriority).toBe(pagePriorityMap[priority]);
 
-  return await exc('powershell "Stop-Process -Name notepad"');
+  return await exc(`powershell "Stop-Process -Id ${pid}"`);
 }
 
 test('setPagePriority: can set page priority, and be retrieved with getPagePriority', async (done) => {
@@ -176,7 +176,7 @@ const testIOPriority = async (priority: string) => {
 
   expect(actualIOPriority).toBe(ioPriorityMap[priority]);
 
-  return await exc('powershell "Stop-Process -Name notepad"');
+  return await exc(`powershell "Stop-Process -Id ${pid}"`);
 }
 
 test('setIOPriority: can set IO priority, and be retrieved with getIOPriority', async (done) => {
@@ -195,7 +195,7 @@ test('terminateProcess: can terminate process', async (done) => {
   expect(success).toBe(true);
 
   try {
-    await exc('powershell "Get-Process -Name notepad"');
+    await exc(`powershell "Get-Process -Id ${pid}"`);
     notepadRunning = true;
   } catch (e) {/* non-zero exit code from process not running */}
 
