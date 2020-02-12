@@ -1,3 +1,4 @@
+import {EOL} from 'os';
 import {parseProfilesConfig} from './index';
 
 import {
@@ -9,6 +10,7 @@ import {
   getIOPriority,
   setIOPriority,
   terminateProcess,
+  suspendProcess,
 } from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
 import {coreCount, PSPriorityMap, pagePriorityMap, ioPriorityMap} from './constants';
@@ -197,6 +199,25 @@ test('terminateProcess: can terminate process', async (done) => {
   } catch (e) {/* non-zero exit code from process not running */}
 
   expect(notepadRunning).toBe(false);
+
+  done();
+});
+
+test('suspendProcess: can suspend process', async (done) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+  let success = suspendProcess(pid);
+
+  expect(success).toBe(true);
+
+  let threads = (await exc('powershell "(Get-Process -Name notepad).Threads"')).split(EOL);
+
+  for (let i = 0, len = threads.length; i < len; i++) {
+    let [key, value] = threads[i].split(':');
+
+    if (key.trim() === 'WaitReason') {
+      expect(value.trim()).toBe('Suspended');
+    }
+  }
 
   done();
 });
