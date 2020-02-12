@@ -2,6 +2,7 @@ import {EOL} from 'os';
 import {parseProfilesConfig} from './index';
 
 import {
+  getProcessorAffinity,
   setProcessorAffinity,
   getPriorityClass,
   setPriorityClass,
@@ -100,6 +101,10 @@ const testAffinity = async (ranges) => {
   );
 
   expect(actualAffinity).toBe(affinity);
+
+  let [processAffinity, systemAffinity] = getProcessorAffinity(pid);
+
+  expect(actualAffinity).toBe(processAffinity);
 
   return await exc(`powershell "Stop-Process -Id ${pid}"`);
 }
