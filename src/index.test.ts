@@ -8,6 +8,7 @@ import {
   setPagePriority,
   getIOPriority,
   setIOPriority,
+  terminateProcess,
 } from './nt';
 import {exc, getAffinityForCoreRanges, readYamlFile} from './utils';
 import {coreCount, PSPriorityMap, pagePriorityMap, ioPriorityMap} from './constants';
@@ -179,6 +180,23 @@ test('setIOPriority: can set IO priority, and be retrieved with getIOPriority', 
   await testIOPriority('idle');
   await testIOPriority('low');
   await testIOPriority('normal');
+
+  done();
+});
+
+test('terminateProcess: can terminate process', async (done) => {
+  let pid = parseInt(await exc('powershell "(Start-Process notepad -passthru).ID"'));
+  let success = terminateProcess(pid);
+  let notepadRunning = false;
+
+  expect(success).toBe(true);
+
+  try {
+    await exc('powershell "Get-Process -Name notepad"');
+    notepadRunning = true;
+  } catch (e) {/* non-zero exit code from process not running */}
+
+  expect(notepadRunning).toBe(false);
 
   done();
 });
