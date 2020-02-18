@@ -15,6 +15,7 @@ import {
   PROCESS_SET_INFORMATION,
   PROCESS_QUERY_LIMITED_INFORMATION,
   PROCESS_SUSPEND_RESUME,
+  PROCESS_TERMINATE,
   MONITOR_DEFAULTTOPRIMARY,
   PROCESS_INFORMATION_CLASS,
 } from './constants';
@@ -394,7 +395,7 @@ const setIOPriority = function(id: number, ioPriority: number): boolean {
 };
 
 const terminateProcess = function(id: number): boolean {
-  const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
+  const handle = getHandleForProcessId(id, PROCESS_TERMINATE);
   const status = kernel32.TerminateProcess(handle, 0);
 
   kernel32.CloseHandle(handle);
