@@ -4,9 +4,10 @@ declare interface AffinityConfiguration {
 }
 
 declare interface Conditional {
-  condition: 'running' | 'fullscreenOverrideActive';
+  condition: 'running' | 'fullscreenOverrideActive' | 'active';
   forProcesses?: string[];
   then: any; // 'disable' | ProcessConfiguration
+  active: boolean;
 }
 
 declare interface ProcessConfiguration {
@@ -23,7 +24,7 @@ declare interface ProcessConfiguration {
   resumeDelay?: number;
   processes?: string[];
   type?: 'standard' | 'fallback' | 'fullscreen';
-  if?: Conditional;
+  if?: Conditional[];
 }
 
 declare interface AppConfiguration {

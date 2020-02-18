@@ -18,7 +18,7 @@ const logDir: string = `${appDir}\\logs`;
 const appConfigYamlPath: string = `${appDir}\\config.yaml`;
 const appConfigTaskXMLPath: string = `${appDir}\\import.xml`;
 
-const ifConditionOptions = ['running', 'fullscreenOverrideActive'];
+const ifConditionOptions = ['running', 'fullscreenOverrideActive', 'active'];
 
 // Fullscreen detection needs more work, in the mean time, ignore the obvious cases.
 const falsePositiveFullscreenApps = [

@@ -95,7 +95,16 @@ const tryFn = function(fn: Function, errCb?: Function): any {
 
 const mergeObjects = (obj1, obj2) => {
   const keys = Object.keys(obj1);
+  const obj2Keys = Object.keys(obj2);
   const obj = {...obj1};
+
+  for (let i = 0, len = obj2Keys.length; i < len; i++) {
+    let key = obj2Keys[i];
+
+    if (keys.indexOf(key) === -1) {
+      keys.push(key);
+    }
+  }
 
   for (let i = 0, len = keys.length; i < len; i++) {
     let key = keys[i];

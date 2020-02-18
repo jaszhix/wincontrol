@@ -1,0 +1,91 @@
+interval: 60000
+logging: true
+detailedLogging: false
+consoleLogging: false
+logLevel: info
+detectConfigChange: true
+
+ignoreProcesses:
+  - system
+  - registry
+  - smss
+  - csrss
+  - wininit
+  - services
+  - memory compression
+  - msmpeng
+  - securityhealthservice
+  - sgrmbroker
+  - nissrv
+
+affinities:
+  - name: systemLow
+    ranges: [[12, 13]]
+  - name: systemHigh
+    ranges: [[11, 13]]
+  - name: systemVeryHigh
+    ranges: [[0, 1], [11, 13]]
+  - name: suppressed
+    ranges: [[10]]
+  - name: foregroundLow
+    ranges: [[5, 9]]
+  - name: foregroundMedium
+    ranges: [[3, 9]]
+  - name: foregroundHigh
+    ranges: [[2, 9]]
+  - name: foregroundVeryHigh
+    ranges: [[0, 9]]
+  - name: full
+    ranges: [[0, 13]]
+
+profiles:
+  - name: default
+    affinity: full
+    cpuPriority: belowNormal
+    ioPriority: low
+    type: fallback
+
+  - name: fullscreen
+    affinity: full
+    cpuPriority: high
+    ioPriority: normal
+    pagePriority: normal
+    type: fullscreen
+
+  - name: servicesPriorityOnlyLow
+    affinity: full
+    cpuPriority: belowNormal
+    pagePriority: normal
+    ioPriority: low
+    processes:
+      - WindowsInternal.ComposableShell.Experiences.TextInput.InputApp
+
+  - name: terminateClickToRun
+    terminationDelay: 1
+    if:
+      - condition: running
+        forProcesses:
+          - EXCEL
+          - MSACCESS
+          - MSPUB
+          - OUTLOOK
+          - POWERPNT
+          - WINWORD
+        then: disable
+    processes:
+      - OfficeClickToRun
+
+  - name: steam
+    affinity: foregroundMedium
+    cpuPriority: belowNormal
+    pagePriority: belowNormal
+    ioPriority: low
+    processes:
+      - Steam
+    if:
+      - condition: 'fullscreenOverrideActive'
+        then:
+          affinity: suppressed
+          cpuPriority: belowNormal
+          pagePriority: belowNormal
+          ioPriority: belowNormal

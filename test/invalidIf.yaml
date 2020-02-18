@@ -1,16 +1,10 @@
-# Example configuration
-# This assumes the host has 14 cores. Logical (HT) cores should be excluded as they are automatically accounted for.
-# See `ProcessConfiguration` at https://github.com/jaszhix/wincontrol/blob/master/types/wincontrol/index.d.ts
-# for all possible configuration options.
-
 interval: 60000
 logging: true
 detailedLogging: false
 consoleLogging: false
 logLevel: info
 detectConfigChange: true
-# Processes that will always be ignored.
-# These examples in particular are protected system processes, and can't be modified.
+
 ignoreProcesses:
   - system
   - registry
@@ -45,15 +39,12 @@ affinities:
     ranges: [[0, 13]]
 
 profiles:
-  # A profile with the 'fallback' type will have all other processes listed prioritized according to
-  # its rules. This only works explicitly.
   - name: default
     affinity: full
     cpuPriority: belowNormal
     ioPriority: low
     type: fallback
 
-  # A profile with the 'fullscreen' type will be the designated profile enforced for fullscreen apps.
   - name: fullscreen
     affinity: full
     cpuPriority: high
@@ -69,8 +60,6 @@ profiles:
     processes:
       - WindowsInternal.ComposableShell.Experiences.TextInput.InputApp
 
-  # Example using the running condition. OfficeClickToRun is only needed while an Office app runs,
-  # but otherwise consumes CPU resources in the background.
   - name: terminateClickToRun
     terminationDelay: 1
     if:
@@ -86,9 +75,6 @@ profiles:
     processes:
       - OfficeClickToRun
 
-  # Example using the fullscreenOverrideActive condition. If focused fullscreen applications are
-  # given high priority (fullscreenPriority option), and one currently is focused, then give the
-  # Steam process lower priority.
   - name: steam
     affinity: foregroundMedium
     cpuPriority: belowNormal
@@ -98,7 +84,6 @@ profiles:
       - Steam
     if:
       condition: 'fullscreenOverrideActive'
-      # forProcesses: ... also able to restrict this condition to certain applications.
       then:
         affinity: suppressed
         cpuPriority: belowNormal

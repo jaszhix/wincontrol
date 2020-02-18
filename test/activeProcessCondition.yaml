@@ -1,0 +1,41 @@
+interval: 4000
+logging: true
+detailedLogging: false
+consoleLogging: false
+logLevel: info
+detectConfigChange: true
+
+ignoreProcesses:
+  - system
+  - registry
+  - smss
+  - csrss
+  - wininit
+  - services
+  - memory compression
+  - msmpeng
+  - securityhealthservice
+  - sgrmbroker
+  - nissrv
+
+affinities:
+  - name: singleCore
+    ranges: [[0]]
+  - name: dualCore
+    ranges: [[0, 1]]
+
+profiles:
+  - name: notepad
+    affinity: singleCore
+    cpuPriority: idle
+    ioPriority: idle
+    pagePriority: idle
+    processes:
+      - notepad
+    if:
+      - condition: 'active'
+        then:
+          affinity: dualCore
+          cpuPriority: normal
+          ioPriority: normal
+          pagePriority: normal

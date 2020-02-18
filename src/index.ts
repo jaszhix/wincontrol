@@ -38,6 +38,7 @@ import {installTaskSchedulerTemplate} from './configuration';
 import {find, mergeObjects} from './lang';
 import log from './log';
 
+let appConfigPath = appConfigYamlPath;
 let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
@@ -54,9 +55,9 @@ let snapshotArgs = ['pid', 'name'];
 let mtime: number = 0;
 let now: number;
 let enforcePolicy: (processList: any[]) => void;
-let loadConfiguration: () => void;
+let loadConfiguration: (configPath?: string) => Promise<any>;
 
-const validateAndParseProfile = (appConfig: AppConfiguration, profile, index, isRootProfile = true) => {
+const validateAndParseProfile = (appConfig: AppConfiguration, profile: ProcessConfiguration, index: number, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
   const {name, cpuPriority, pagePriority, ioPriority, cmd} = profile;
 
@@ -96,58 +97,67 @@ const validateAndParseProfile = (appConfig: AppConfiguration, profile, index, is
     }
 
     if (profile.if) {
-      const thenValueIsString = typeof profile.if.then === 'string';
-      const thenValueIsKeyedObject = typeof profile.if.then === 'object' && !Array.isArray(profile.if.then);
-
-      if (!profile.if.condition) {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: required 'condition' property is not defined.`)
+      if (!Array.isArray(profile.if)) {
+        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'if' should be an array of conditional objects.`);
       }
 
-      if (ifConditionOptions.indexOf(profile.if.condition) === -1) {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'condition' value is invalid. Possible options are: ${ifConditionOptions.join(', ')}`);
-      }
+      for (let i = 0, len = profile.if.length; i < len; i++) {
+        let n = i + 1;
+        let item = profile.if[i];
 
-      if (!profile.if.then) {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: required 'then' property is not defined.`)
-      }
+        const thenValueIsString = typeof item.then === 'string';
+        const thenValueIsKeyedObject = typeof item.then === 'object' && !Array.isArray(item.then);
 
-      if (!thenValueIsString && !thenValueIsKeyedObject) {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: the 'then' value is not a string or keyed object.`);
-      }
-
-      if (thenValueIsString && profile.if.then !== 'disable') {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' is a string, but the value is not 'disable'.`)
-      }
-
-      if (profile.if.forProcesses) {
-        if (!Array.isArray(profile.if.forProcesses)) {
-          throw new Error(`[${profile.name}] 'if' block misconfiguration: 'forProcesses' must be an array if defined.`);
+        if (!item.condition) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): required 'condition' property is not defined.`)
         }
 
-        for (let i = 0, len = profile.if.forProcesses.length; i < len; i++) {
-          if (typeof profile.if.forProcesses[i] !== 'string') {
-            throw new Error(`[${profile.name}] 'if' block misconfiguration: 'forProcesses' must be an array of strings.`);
+        if (ifConditionOptions.indexOf(item.condition) === -1) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'condition' value is invalid. Possible options are: ${ifConditionOptions.join(', ')}`);
+        }
+
+        if (!item.then) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): required 'then' property is not defined.`)
+        }
+
+        if (!thenValueIsString && !thenValueIsKeyedObject) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): the 'then' value is not a string or keyed object.`);
+        }
+
+        if (thenValueIsString && item.then !== 'disable') {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'then' is a string, but the value is not 'disable'.`)
+        }
+
+        if (item.forProcesses) {
+          if (!Array.isArray(item.forProcesses)) {
+            throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'forProcesses' must be an array if defined.`);
           }
 
-          profile.if.forProcesses[i] = profile.if.forProcesses[i].toLowerCase().replace(/\.exe$/, '');
+          for (let i = 0, len = item.forProcesses.length; i < len; i++) {
+            if (typeof item.forProcesses[i] !== 'string') {
+              throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'forProcesses' must be an array of strings.`);
+            }
+
+            item.forProcesses[i] = item.forProcesses[i].toLowerCase().replace(/\.exe$/, '');
+          }
         }
-      }
 
-      if (profile.if.condition === 'running' && !profile.if.forProcesses) {
-        throw new Error(`[${profile.name}] 'if' block misconfiguration: 'condition' value is 'running', but 'forProcesses' is not an array.`);
-      }
+        if (item.condition === 'running' && !item.forProcesses) {
+          throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'condition' value is 'running', but 'forProcesses' is not an array.`);
+        }
 
-      if (thenValueIsKeyedObject) {
-        let keys = Object.keys(profile).concat(Object.keys(profile.if.then));
+        if (thenValueIsKeyedObject) {
+          let keys = Object.keys(profile).concat(Object.keys(item.then));
 
-        validateAndParseProfile(appConfig, profile.if.then, index, false);
+          validateAndParseProfile(appConfig, item.then, index, false);
 
-        if (keys.indexOf('terminationDelay') === -1 && keys.indexOf('suspensionDelay') === -1) {
-          for (let i = 0, len = keys.length; i < len; i++) {
-            let key = keys[i];
+          if (keys.indexOf('terminationDelay') === -1 && keys.indexOf('suspensionDelay') === -1) {
+            for (let i = 0, len = keys.length; i < len; i++) {
+              let key = keys[i];
 
-            if (profile[key] == null) {
-              throw new Error(`[${profile.name}] 'if' block misconfiguration: 'then' child cannot have keys the parent does not have.`);
+              if (profile[key] == null) {
+                throw new Error(`[${profile.name}] 'if' block misconfiguration (${n}): 'then' child cannot have keys the parent does not have.`);
+              }
             }
           }
         }
@@ -276,19 +286,23 @@ const attemptProcessModification = (func: Function, name: string, cmdline: strin
   return true;
 }
 
+const resetGlobals = () => {
+  if (timeout) clearTimeout(timeout);
+
+  timeout = null;
+  appConfig = null;
+  snapshotArgs = ['pid', 'name'];
+  profileNames = [];
+  processesConfigured = [];
+};
+
 const runRoutine = (checkConfigChange = true): void => {
   now = Date.now();
 
-  fs.stat(appConfigYamlPath).then((info) => {
+  fs.stat(appConfigPath).then((info) => {
     // Compare the app config's cached mtime with the current mtime, and reload everything if a change has occurred.
     if (checkConfigChange && appConfig.detectConfigChange && mtime && info.mtimeMs !== mtime) {
-      if (timeout) clearTimeout(timeout);
-
-      timeout = null;
-      appConfig = null;
-      snapshotArgs = ['pid', 'name'];
-      profileNames = [];
-      processesConfigured = [];
+      resetGlobals();
 
       log.open();
       log.important('Configuration changed, reloading...');
@@ -309,11 +323,6 @@ const runRoutine = (checkConfigChange = true): void => {
 enforcePolicy = (processList): void => {
   if (!processList) return;
 
-  for (let i = 0, len = processList.length; i < len; i++) {
-    const ps = processList[i];
-    ps.name = ps.name.toLowerCase().replace(/\.exe$/, '');
-  }
-
   if (timeout) clearTimeout(timeout);
 
   const {profiles, interval} = appConfig;
@@ -327,8 +336,16 @@ enforcePolicy = (processList): void => {
 
   if (logging) log.open();
 
+  for (let i = 0, len = processList.length; i < len; i++) {
+    const ps = processList[i];
+    ps.name = ps.name.toLowerCase().replace(/\.exe$/, '');
+
+    if (activeWindow.pid === ps.pid) {
+      activeProcess = ps;
+    }
+  }
+
   if (activeWindow.isFullscreen) {
-    activeProcess = find(processList, (item) => activeWindow.pid === item.pid);
     isValidActiveFullscreenApp = falsePositiveFullscreenApps.indexOf(activeProcess.name) === -1;
   }
 
@@ -433,68 +450,83 @@ enforcePolicy = (processList): void => {
         }
 
         if (profile.if) {
-          let useCondition = false;
+          let shouldContinue = false;
 
-          switch (profile.if.condition) {
-            case 'running':
-              for (let i = 0, len = processList.length; i < len; i++) {
-                if (profile.if.forProcesses.indexOf(processList[i].name) > -1) {
-                  useCondition = true;
-                  if (logging) conditionReason = `${processList[i].name} is running`;
+          for (let i = 0, len = profile.if.length; i < len; i++) {
+            let item = profile.if[i]
+
+            item.active = false;
+
+            switch (item.condition) {
+              case 'running':
+                for (let i = 0, len = processList.length; i < len; i++) {
+                  if (item.forProcesses.indexOf(processList[i].name) > -1) {
+                    item.active = true;
+                    if (logging) conditionReason = `${psName} is running`;
+                  }
                 }
-              }
-              break;
-            case 'fullscreenOverrideActive':
-              if (isValidActiveFullscreenApp) {
-                // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
-                if (profile.if.forProcesses && profile.if.forProcesses.indexOf(activeProcess.name) === -1) {
+                break;
+              case 'fullscreenOverrideActive':
+                if (isValidActiveFullscreenApp) {
+                  // if 'forProcesses' is defined, only consider the listed applications as valid fullscreen apps.
+                  if (item.forProcesses && item.forProcesses.indexOf(activeProcess.name) === -1) {
+                    break;
+                  }
+
+                  item.active = true;
+                  if (logging) conditionReason = `Active process '${activeProcess.name}' is fullscreen`;
+                }
+                break;
+              case 'active':
+                if (activeProcess.name === psName) {
+                  item.active = true;
+                  if (logging) conditionReason = `Process '${psName}' is active`;
+                }
+                break;
+            }
+          }
+
+          for (let i = 0, len = profile.if.length; i < len; i++) {
+            let item = profile.if[i];
+
+            if (item.active) {
+              switch (true) {
+                // disable (skip) rule enforcement
+                case (item.then === 'disable'):
+                  shouldContinue = isDisabled = true;
                   break;
-                }
+                // replace rule
+                case (typeof item.then === 'object'):
+                  isReplacedBy = item.then.name ? item.then.name : 'override';
 
-                useCondition = true;
-                if (logging) conditionReason = `Active process '${activeProcess.name}' is fullscreen`;
+                  profile = mergeObjects(profile, item.then);
+
+                  if (profile.terminationDelay && !item.then.terminationDelay) {
+                    profile.terminationDelay = null;
+                  }
+
+                  if (profile.suspensionDelay && !item.then.suspensionDelay) {
+                    profile.suspensionDelay = null;
+                  }
+
+                  if (profile.suspensionDelay && tempSuspendedPids.indexOf(pid) === -1) {
+                    tempSuspendedPids.push(pid);
+                  }
+
+                  break;
               }
-              break;
-          }
 
-          if (useCondition) {
-            let shouldContinue = false;
-
-            switch (true) {
-              // disable (skip) rule enforcement
-              case (profile.if.then === 'disable'):
-                shouldContinue = isDisabled = true;
-                break;
-              // replace rule
-              case (typeof profile.if.then === 'object'):
-                isReplacedBy = profile.if.then.name ? profile.if.then.name : 'override';
-
-                profile = mergeObjects(profile, profile.if.then);
-
-                if (profile.terminationDelay && !profile.if.then.terminationDelay) {
-                  profile.terminationDelay = null;
-                }
-
-                if (profile.suspensionDelay && !profile.if.then.suspensionDelay) {
-                  profile.suspensionDelay = null;
-                }
-
-                if (profile.suspensionDelay) {
-                  tempSuspendedPids.push(pid);
-                }
-
-                break;
-            }
-
-            if (shouldContinue) continue;
-          } else {
-            // If this is a trackable process and suspensionDelay is set conditionally, attempt to resume.
-            let tempSuspendedIndex = tempSuspendedPids.indexOf(pid);
-            if (tempSuspendedIndex > -1) {
-              resumeDelay = 1;
-              tempSuspendedPids.splice(tempSuspendedIndex, 1);
+            } else if (item.then) {
+              // If this is a trackable process and suspensionDelay is set conditionally, attempt to resume.
+              let tempSuspendedIndex = tempSuspendedPids.indexOf(pid);
+              if (tempSuspendedIndex > -1) {
+                resumeDelay = 1;
+                tempSuspendedPids.splice(tempSuspendedIndex, 1);
+              }
             }
           }
+
+          if (shouldContinue) continue;
         }
 
         // Stop here if the process doesn't match - the fullscreen priority logic above is
@@ -687,7 +719,7 @@ const getConfigInfo = () => {
   }
 
   log.important('====================== Config info ======================');
-  log.important(`Configuration file: ${appConfigYamlPath}`);
+  log.important(`Configuration file: ${appConfigPath}`);
   log.important(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   log.important(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
   log.important(`Fallback profile present: ${fallbackProfilePresent ? '✓' : '✗'}`);
@@ -712,8 +744,10 @@ const init = () => {
   console.log('Initialized');
 };
 
-loadConfiguration = (): void => {
-  getPhysicalCoreCount()
+loadConfiguration = (configPath?: string): Promise<any> => {
+  if (configPath) appConfigPath = configPath;
+
+  return getPhysicalCoreCount()
     .then((count) => {
       useHT = count !== coreCount;
       physicalCoreCount = count;
@@ -721,9 +755,9 @@ loadConfiguration = (): void => {
       return fs.ensureDir(appDir);
     })
     .then(() => fs.ensureDir(logDir))
-    .then(() => fs.exists(appConfigYamlPath))
+    .then(() => fs.exists(appConfigPath))
     .then((exists) => {
-      if (!exists) return copyFile('./config.yaml', appConfigYamlPath);
+      if (!exists) return copyFile('./config.yaml', appConfigPath);
       return Promise.resolve();
     })
     .then(() => fs.exists(appConfigTaskXMLPath))
@@ -731,7 +765,7 @@ loadConfiguration = (): void => {
       if (!exists) return installTaskSchedulerTemplate(appConfigTaskXMLPath);
       return Promise.resolve();
     })
-    .then(() => readYamlFile(appConfigYamlPath))
+    .then(() => readYamlFile(appConfigPath))
     .then((config: AppConfiguration) => {
       let logLevelInvalid = false;
 
@@ -753,7 +787,7 @@ loadConfiguration = (): void => {
       log.enabled = config.logging;
       log.enableConsoleLog = config.consoleLogging;
 
-      if (isDevelopment) {
+      if (isDevelopment || process.env.TEST_ENV) {
         log.enabled = log.enableConsoleLog = config.logging = config.consoleLogging = true;
         config.logLevel = 'info';
       }
@@ -784,4 +818,4 @@ if (!process.env.TEST_ENV) {
   loadConfiguration();
 }
 
-export {parseProfilesConfig};
+export {loadConfiguration, parseProfilesConfig, resetGlobals};
