@@ -30,6 +30,7 @@ declare interface ProcessConfiguration {
 declare interface AppConfiguration {
   interval: number;
   logging?: boolean;
+  loggingInterval?: number;
   detailedLogging?: boolean;
   consoleLogging?: boolean;
   logLevel?: string;

@@ -43,8 +43,8 @@ let physicalCoreCount: number;
 let useHT: boolean = false;
 let fullAffinity: number = null;
 let selfAffinity: number = null;
-let failedPids = [];
-let tempSuspendedPids = [];
+let failedPids: number[] = [];
+let tempSuspendedPids: number[] = [];
 let fullscreenOptimizedPid = 0;
 let fullscreenOriginalState = null;
 let timeout: NodeJS.Timeout = null;
@@ -53,7 +53,8 @@ let profileNames = [];
 let processesConfigured = [];
 let snapshotArgs = ['pid', 'name'];
 let mtime: number = 0;
-let now: number;
+let now: number = 0;
+let lastLogTime: number = 0;
 let enforcePolicy: (processList: any[]) => void;
 let loadConfiguration: (configPath?: string) => Promise<any>;
 
@@ -291,6 +292,7 @@ const resetGlobals = () => {
 
   timeout = null;
   appConfig = null;
+  now = lastLogTime = 0;
   snapshotArgs = ['pid', 'name'];
   profileNames = [];
   processesConfigured = [];
@@ -327,14 +329,23 @@ enforcePolicy = (processList): void => {
 
   const {profiles, interval} = appConfig;
   const activeWindow = getActiveWindow();
-  const {logging, detailedLogging, ignoreProcesses} = appConfig;
+  let {logging, loggingInterval, detailedLogging, ignoreProcesses} = appConfig;
   let isValidActiveFullscreenApp = false;
   let activeProcess;
   let logItems: any[] = [];
   let refLogItem: any;
   let logOutput: string = '';
 
-  if (logging) log.open();
+  failedPids = [];
+
+  if (loggingInterval) {
+    appConfig.logging = logging = (now - lastLogTime > loggingInterval);
+  }
+
+  if (logging) {
+    log.open();
+    lastLogTime = now;
+  }
 
   for (let i = 0, len = processList.length; i < len; i++) {
     const ps = processList[i];
@@ -720,6 +731,8 @@ const getConfigInfo = () => {
 
   log.important('====================== Config info ======================');
   log.important(`Configuration file: ${appConfigPath}`);
+  log.important(`Polling rate: ${appConfig.interval}ms`);
+  log.important(`Logging rate: ${appConfig.loggingInterval || appConfig.interval}ms`);
   log.important(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   log.important(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
   log.important(`Fallback profile present: ${fallbackProfilePresent ? '✓' : '✗'}`);
