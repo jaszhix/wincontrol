@@ -339,7 +339,7 @@ enforcePolicy = (processList): void => {
   failedPids = [];
 
   if (loggingInterval) {
-    appConfig.logging = logging = (now - lastLogTime > loggingInterval);
+    log.enabled = appConfig.logging = logging = (now - lastLogTime > loggingInterval);
   }
 
   if (logging) {
