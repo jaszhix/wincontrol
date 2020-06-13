@@ -139,11 +139,27 @@ const getAffinityForCoreRanges = (
   return [n, graph];
 };
 
+const getEnumKeyFromValue = <T>(Enum: T, enumValue: unknown): keyof T | string => {
+  let statusCode = 'Unknown';
+
+  for (let key in Enum) {
+    let value = Enum[key] as unknown as number | string;
+
+    if (enumValue === value) {
+      statusCode = key;
+      break;
+    }
+  }
+
+  return statusCode;
+}
+
 export {
   exc,
   getPhysicalCoreCount,
   getUserSID,
   copyFile,
   readYamlFile,
-  getAffinityForCoreRanges
+  getAffinityForCoreRanges,
+  getEnumKeyFromValue,
 };

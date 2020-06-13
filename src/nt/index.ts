@@ -9,7 +9,8 @@ import ref from 'ref';
 import Struct from 'ref-struct';
 import wchar from 'ref-wchar';
 
-import log from './log';
+import log from '../log';
+import {getEnumKeyFromValue} from '../utils';
 import {
   PROCESS_ALL_ACCESS,
   PROCESS_SET_INFORMATION,
@@ -17,7 +18,8 @@ import {
   PROCESS_SUSPEND_RESUME,
   PROCESS_TERMINATE,
   MONITOR_DEFAULTTOPRIMARY,
-} from './constants';
+} from '../constants';
+import {NTStatus} from './status';
 
 namespace NT {
   export enum PROCESS_INFORMATION_CLASS {
@@ -163,11 +165,11 @@ namespace NT {
   }
 
   export interface Ntdll {
-    NtQueryInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): number;
-    NtSetInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): number;
-    NtSuspendProcess(handle: Buffer): number;
-    NtResumeProcess(handle: Buffer): number;
-    RtlAdjustPrivilege(privilege: SecurityEntity, enable: boolean, currentThread: boolean, pbool: Buffer): number;
+    NtQueryInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): NTStatus;
+    NtSetInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): NTStatus;
+    NtSuspendProcess(handle: Buffer): NTStatus;
+    NtResumeProcess(handle: Buffer): NTStatus;
+    RtlAdjustPrivilege(privilege: SecurityEntity, enable: boolean, currentThread: boolean, pbool: Buffer): NTStatus;
   }
 }
 
@@ -266,6 +268,7 @@ const kernel32 = new Library('kernel32', {
   TerminateProcess: ['int', ['pointer', 'uint32']],
 
   // https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes--0-499-
+  // Always returns 0: https://github.com/node-ffi/node-ffi/issues/261
   GetLastError: ['uint32', []],
 }) as NT.Kernel32;
 
@@ -416,24 +419,6 @@ const getActiveWindow = function(): NT.WindowInfo {
   return getBasicWindowInfo(user32.GetForegroundWindow());
 };
 
-const getProcessorAffinity = function(id: number): any[] {
-  const handle = getHandleForProcessId(id);
-  let processAffinity = ref.alloc('uint32');
-  let systemAffinity = ref.alloc('uint32');
-
-  if (!kernel32.GetProcessAffinityMask(handle, processAffinity, systemAffinity)) {
-    kernel32.CloseHandle(handle);
-    return [null];
-  }
-
-  processAffinity = ref.get(processAffinity);
-  systemAffinity = ref.get(systemAffinity);
-
-  kernel32.CloseHandle(handle);
-
-  return [processAffinity, systemAffinity];
-};
-
 const getPriorityClass = function(id: number): number {
   const handle = getHandleForProcessId(id);
   const priority = kernel32.GetPriorityClass(handle);
@@ -450,13 +435,31 @@ const setPriorityClass = function(id: number, mask: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (!status) {
-    log.warning('Failed to set priority for process:', id);
+    log.warning(`[setPriorityClass failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
   return true;
 };
 
+const getProcessorAffinity = function(id: number): any[] {
+  const handle = getHandleForProcessId(id);
+  let processAffinity = ref.alloc('uint32');
+  let systemAffinity = ref.alloc('uint32');
+
+  if (!kernel32.GetProcessAffinityMask(handle, processAffinity, systemAffinity)) {
+    log.warning(`[getProcessorAffinity failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
+    kernel32.CloseHandle(handle);
+    return [null];
+  }
+
+  processAffinity = ref.get(processAffinity);
+  systemAffinity = ref.get(systemAffinity);
+
+  kernel32.CloseHandle(handle);
+
+  return [processAffinity, systemAffinity];
+};
 
 const setProcessorAffinity = function(id: number, mask: number): boolean {
   const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
@@ -466,7 +469,7 @@ const setProcessorAffinity = function(id: number, mask: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (!status) {
-    log.warning('Failed to set affinity for process:', id, kernel32.GetLastError());
+    log.warning(`[setProcessorAffinity failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
@@ -483,7 +486,7 @@ const getPagePriority = function(id: number): number {
   kernel32.CloseHandle(handle);
 
   if (!status) {
-    log.warning('Failed to get page priority for process:', id, kernel32.GetLastError());
+    log.warning(`[getPagePriority failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
     return 0;
   }
 
@@ -499,12 +502,28 @@ const setPagePriority = function(id: number, MemoryPriority: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (!status) {
-    log.warning('Failed to set page priority for process:', id, kernel32.GetLastError());
+    log.warning(`[setPagePriority failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
   return true;
 };
+
+const terminateProcess = function(id: number): boolean {
+  const handle = getHandleForProcessId(id, PROCESS_TERMINATE);
+  const status = kernel32.TerminateProcess(handle, 0);
+
+  kernel32.CloseHandle(handle);
+
+  if (!status) {
+    log.warning(`[terminateProcess failure] PID: ${id}, LastError: ${kernel32.GetLastError()}`);
+    return false;
+  }
+
+  return true;
+};
+
+// Ntdll-based functions
 
 const getIOPriority = function(id: number): number {
   const handle = getHandleForProcessId(id, PROCESS_ALL_ACCESS);
@@ -520,7 +539,7 @@ const getIOPriority = function(id: number): number {
   kernel32.CloseHandle(handle);
 
   if (status) {
-    log.warning('Failed to get I/O priority for process:', id, kernel32.GetLastError(), status);
+    log.warning(`[getIOPriority failure] PID: ${id}, NT_STATUS: ${getEnumKeyFromValue(NTStatus, status)}, LastError: ${kernel32.GetLastError()}`);
     return 0;
   }
 
@@ -540,21 +559,7 @@ const setIOPriority = function(id: number, ioPriority: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (status) {
-    log.warning('Failed to set I/O priority for process:', id, kernel32.GetLastError(), status);
-    return false;
-  }
-
-  return true;
-};
-
-const terminateProcess = function(id: number): boolean {
-  const handle = getHandleForProcessId(id, PROCESS_TERMINATE);
-  const status = kernel32.TerminateProcess(handle, 0);
-
-  kernel32.CloseHandle(handle);
-
-  if (!status) {
-    log.warning('Failed to terminate process:', id, kernel32.GetLastError());
+    log.warning(`[setIOPriority failure] PID: ${id}, NT_STATUS: ${getEnumKeyFromValue(NTStatus, status)}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
@@ -568,7 +573,7 @@ const suspendProcess = function(id: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (status) {
-    log.warning('Failed to suspend process:', id, kernel32.GetLastError(), status);
+    log.warning(`[suspendProcess failure] PID: ${id}, NT_STATUS: ${getEnumKeyFromValue(NTStatus, status)}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
@@ -582,7 +587,7 @@ const resumeProcess = function(id: number): boolean {
   kernel32.CloseHandle(handle);
 
   if (status) {
-    log.warning('Failed to resume process:', id, kernel32.GetLastError(), status);
+    log.warning(`[resumeProcess failure] PID: ${id}, NT_STATUS: ${getEnumKeyFromValue(NTStatus, status)}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
@@ -599,7 +604,7 @@ const adjustPrivilege = function(privilege: NT.SecurityEntity, enable = true, cu
   );
 
   if (status) {
-    log.warning('Failed to adjust privilege for wincontrol:', kernel32.GetLastError(), status);
+    log.warning(`[adjustPrivilege failure] PID: ${process.pid} NT_STATUS: ${getEnumKeyFromValue(NTStatus, status)}, LastError: ${kernel32.GetLastError()}`);
     return false;
   }
 
