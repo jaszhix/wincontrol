@@ -17,8 +17,159 @@ import {
   PROCESS_SUSPEND_RESUME,
   PROCESS_TERMINATE,
   MONITOR_DEFAULTTOPRIMARY,
-  PROCESS_INFORMATION_CLASS,
 } from './constants';
+
+namespace NT {
+  export enum PROCESS_INFORMATION_CLASS {
+    ProcessBasicInformation = 0,
+    ProcessQuotaLimits,
+    ProcessIoCounters,
+    ProcessVmCounters,
+    ProcessTimes,
+    ProcessBasePriority,
+    ProcessRaisePriority,
+    ProcessDebugPort,
+    ProcessExceptionPort,
+    ProcessAccessToken,
+    ProcessLdtInformation,
+    ProcessLdtSize,
+    ProcessDefaultHardErrorMode,
+    ProcessIoPortHandlers,
+    ProcessPooledUsageAndLimits,
+    ProcessWorkingSetWatch,
+    ProcessUserModeIOPL,
+    ProcessEnableAlignmentFaultFixup,
+    ProcessPriorityClass,
+    ProcessWx86Information,
+    ProcessHandleCount,
+    ProcessAffinityMask,
+    ProcessPriorityBoost,
+    ProcessDeviceMap,
+    ProcessSessionInformation,
+    ProcessForegroundInformation,
+    ProcessWow64Information,
+    ProcessImageFileName,
+    ProcessLUIDDeviceMapsEnabled,
+    ProcessBreakOnTermination,
+    ProcessDebugObjectHandle,
+    ProcessDebugFlags,
+    ProcessHandleTracing,
+    ProcessIoPriority,
+    ProcessExecuteFlags,
+    ProcessResourceManagement,
+    ProcessCookie,
+    ProcessImageInformation,
+    ProcessCycleTime,
+    ProcessPagePriority,
+    ProcessInstrumentationCallback,
+    ProcessThreadStackAllocation,
+    ProcessWorkingSetWatchEx,
+    ProcessImageFileNameWin32,
+    ProcessImageFileMapping,
+    ProcessAffinityUpdateMode,
+    ProcessMemoryAllocationMode,
+    MaxProcessInfoClass
+  }
+
+  export enum SecurityEntity {
+    SeCreateTokenPrivilege = 1,
+    SeAssignPrimaryTokenPrivilege = 2,
+    SeLockMemoryPrivilege = 3,
+    SeIncreaseQuotaPrivilege = 4,
+    SeUnsolicitedInputPrivilege = 5,
+    SeMachineAccountPrivilege = 6,
+    SeTcbPrivilege = 7,
+    SeSecurityPrivilege = 8,
+    SeTakeOwnershipPrivilege = 9,
+    SeLoadDriverPrivilege = 10,
+    SeSystemProfilePrivilege = 11,
+    SeSystemtimePrivilege = 12,
+    SeProfileSingleProcessPrivilege = 13,
+    SeIncreaseBasePriorityPrivilege = 14,
+    SeCreatePagefilePrivilege = 15,
+    SeCreatePermanentPrivilege = 16,
+    SeBackupPrivilege = 17,
+    SeRestorePrivilege = 18,
+    SeShutdownPrivilege = 19,
+    SeDebugPrivilege = 20,
+    SeAuditPrivilege = 21,
+    SeSystemEnvironmentPrivilege = 22,
+    SeChangeNotifyPrivilege = 23,
+    SeRemoteShutdownPrivilege = 24,
+    SeUndockPrivilege = 25,
+    SeSyncAgentPrivilege = 26,
+    SeEnableDelegationPrivilege = 27,
+    SeManageVolumePrivilege = 28,
+    SeImpersonatePrivilege = 29,
+    SeCreateGlobalPrivilege = 30,
+    SeTrustedCredManAccessPrivilege = 31,
+    SeRelabelPrivilege = 32,
+    SeIncreaseWorkingSetPrivilege = 33,
+    SeTimeZonePrivilege = 34,
+    SeCreateSymbolicLinkPrivilege = 35,
+  }
+
+  export interface WindowRect {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    'ref.buffer'?: Buffer;
+  }
+
+  export interface MonitorInfo {
+    cbSize: number;
+    rcMonitor: WindowRect;
+    rcWork: WindowRect;
+    dwFlags: number;
+  }
+
+  export interface WindowInfo {
+    title?: string;
+    name?: string;
+    pid: number;
+    priorityClass?: number;
+    visible?: boolean;
+    isFullscreen: boolean;
+    rect?: WindowRect;
+  }
+
+  export interface User32 {
+    GetForegroundWindow(): Buffer;
+    GetWindowTextW(handle: Buffer, b: Buffer, len: number): number;
+    GetWindowTextLengthW(handle: Buffer): number;
+    GetWindowThreadProcessId(handle: Buffer, processId: Buffer): number;
+    GetWindowRect(handle: Buffer, rect: Buffer): number;
+    IsWindowVisible(handle: Buffer): number;
+    EnumWindows(cb: Buffer, lParam: Buffer): number;
+    MonitorFromWindow(handle: Buffer, dwFlags: number): Buffer;
+    GetMonitorInfoA(handle: Buffer, monitorInfo: Buffer): number;
+  }
+
+  export interface Kernel32 {
+    OpenProcess(permission: number, bInheritHandle: boolean, processId: number): Buffer;
+    CloseHandle(handle: Buffer): number;
+    QueryFullProcessImageNameW(handle: Buffer, dwFlags: number, lpExeName: Buffer, lpdwSize: Buffer): number;
+    GetPriorityClass(handle: Buffer): number;
+    SetPriorityClass(handle: Buffer, dwPriorityClass: number): number;
+    QueryProcessAffinityUpdateMode(handle: Buffer, lpdwFlags: number): number;
+    SetProcessAffinityUpdateMode(handle: Buffer, dwFlags: number): number;
+    GetProcessAffinityMask(handle: Buffer, processAffinity: Buffer, systemAffinity: Buffer): number;
+    SetProcessAffinityMask(handle: Buffer, mask: number): number;
+    GetProcessInformation(handle: Buffer, processInfoClass: number, processInfo: Buffer, processInfoSize: number): number;
+    SetProcessInformation(handle: Buffer, processInfoClass: number, processInfo: Buffer, processInfoSize: number): number;
+    TerminateProcess(handle: Buffer, processId: number): number;
+    GetLastError(): number;
+  }
+
+  export interface Ntdll {
+    NtQueryInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): number;
+    NtSetInformationProcess(handle: Buffer, processInfoClass: PROCESS_INFORMATION_CLASS, value: Buffer, size: number): number;
+    NtSuspendProcess(handle: Buffer): number;
+    NtResumeProcess(handle: Buffer): number;
+    RtlAdjustPrivilege(privilege: SecurityEntity, enable: boolean, currentThread: boolean, pbool: Buffer): number;
+  }
+}
 
 const MemoryPriorityInformation = Struct({
   MemoryPriority: 'uint'
@@ -28,6 +179,7 @@ const MemoryPriorityInformationType = ref.refType(MemoryPriorityInformation);
 // TODO: Get the fullscreen window to prioritize games
 // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowrect
 // https://docs.microsoft.com/en-us/previous-versions//dd162897(v=vs.85)
+
 const Rect = Struct({
   left: 'long',
   top: 'long',
@@ -78,7 +230,7 @@ const user32 = new Library('User32.dll', {
   MonitorFromWindow: ['pointer', ['pointer', 'int']],
   // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmonitorinfoa
   GetMonitorInfoA: ['int', ['pointer', MonitorInfoType]]
-});
+}) as NT.User32;
 
 // Create ffi declarations for the C++ library and functions needed (Kernel32.dll), using their "Unicode" (UTF-16) version
 const kernel32 = new Library('kernel32', {
@@ -115,15 +267,16 @@ const kernel32 = new Library('kernel32', {
 
   // https://docs.microsoft.com/en-us/windows/desktop/Debug/system-error-codes--0-499-
   GetLastError: ['uint32', []],
-});
+}) as NT.Kernel32;
 
 const ntdll = new Library('ntdll.dll', {
   // Undocumented?
   NtQueryInformationProcess: ['ulong', ['pointer', 'int' /* enum */, 'int *', 'ulong']],
   NtSetInformationProcess: ['ulong', ['pointer', 'int' /* enum */, 'int *', 'ulong']],
   NtSuspendProcess: ['int', ['pointer']],
-  NtResumeProcess: ['int', ['pointer']]
-});
+  NtResumeProcess: ['int', ['pointer']],
+  RtlAdjustPrivilege: ['int', ['ulong', 'bool', 'bool', 'bool *']]
+}) as NT.Ntdll;
 
 const getHandleForProcessId = function(id, permission = PROCESS_QUERY_LIMITED_INFORMATION) {
   const processIdBuffer = ref.alloc('uint32', id);
@@ -140,7 +293,7 @@ const allocateRect = function() {
   return ptr;
 }
 
-const getWindowRect = function(windowHandle): WindowRect {
+const getWindowRect = function(windowHandle): NT.WindowRect {
   const ptr = allocateRect();
 
   user32.GetWindowRect(windowHandle, ptr);
@@ -148,7 +301,7 @@ const getWindowRect = function(windowHandle): WindowRect {
   return ref.get(ptr);
 }
 
-const getWindowMonitorInfo = function(windowHandle): any {
+const getWindowMonitorInfo = function(windowHandle): NT.MonitorInfo {
   const monitorPtr = user32.MonitorFromWindow(windowHandle, MONITOR_DEFAULTTOPRIMARY);
   const monitorInfo = new MonitorInfo({
     cbSize: 40,
@@ -165,8 +318,8 @@ const getWindowMonitorInfo = function(windowHandle): any {
 
 // Adapted from https://github.com/sindresorhus/active-win
 
-const getWindowInfo = function(windowHandle): WindowInfo {
-  const rect: WindowRect = getWindowRect(windowHandle);
+const getWindowInfo = function(windowHandle): NT.WindowInfo {
+  const rect: NT.WindowRect = getWindowRect(windowHandle);
   const monitorInfo = getWindowMonitorInfo(windowHandle);
 
   let isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
@@ -191,7 +344,7 @@ const getWindowInfo = function(windowHandle): WindowInfo {
   user32.GetWindowThreadProcessId(windowHandle, processIdBuffer);
 
   // Get the process ID as a number from the buffer
-  const processId = ref.get(processIdBuffer);
+  const processId: number = ref.get(processIdBuffer);
   // Get a "handle" of the process
   const processHandle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
 
@@ -227,8 +380,8 @@ const getWindowInfo = function(windowHandle): WindowInfo {
   };
 };
 
-const getBasicWindowInfo = function(windowHandle): WindowInfo {
-  const rect: WindowRect = getWindowRect(windowHandle);
+const getBasicWindowInfo = function(windowHandle): NT.WindowInfo {
+  const rect: NT.WindowRect = getWindowRect(windowHandle);
   const monitorInfo = getWindowMonitorInfo(windowHandle);
   const isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
     && rect.bottom === monitorInfo.rcMonitor.bottom;
@@ -259,7 +412,7 @@ const getWindows = function(cb): void {
   cb(windows);
 };
 
-const getActiveWindow = function(): WindowInfo {
+const getActiveWindow = function(): NT.WindowInfo {
   return getBasicWindowInfo(user32.GetForegroundWindow());
 };
 
@@ -358,7 +511,7 @@ const getIOPriority = function(id: number): number {
   const ioPriorityValue = ref.alloc('int', 0);
   const status = ntdll.NtQueryInformationProcess(
     handle,
-    PROCESS_INFORMATION_CLASS.ProcessIoPriority,
+    NT.PROCESS_INFORMATION_CLASS.ProcessIoPriority,
     ioPriorityValue,
     ioPriorityValue.length
   );
@@ -379,7 +532,7 @@ const setIOPriority = function(id: number, ioPriority: number): boolean {
   const ioPriorityValue = ref.alloc('int', ioPriority);
   const status = ntdll.NtSetInformationProcess(
     handle,
-    PROCESS_INFORMATION_CLASS.ProcessIoPriority,
+    NT.PROCESS_INFORMATION_CLASS.ProcessIoPriority,
     ioPriorityValue,
     ioPriorityValue.length
   );
@@ -436,6 +589,23 @@ const resumeProcess = function(id: number): boolean {
   return true;
 };
 
+const adjustPrivilege = function(privilege: NT.SecurityEntity, enable = true, currentThread = false): boolean {
+  const pbool = ref.alloc('int', 0);
+  const status = ntdll.RtlAdjustPrivilege(
+    privilege,
+    enable,
+    currentThread,
+    pbool
+  );
+
+  if (status) {
+    log.warning('Failed to adjust privilege for wincontrol:', kernel32.GetLastError(), status);
+    return false;
+  }
+
+  return true;
+};
+
 export {
   getActiveWindow,
   getWindows,
@@ -450,4 +620,6 @@ export {
   terminateProcess,
   suspendProcess,
   resumeProcess,
+  adjustPrivilege,
+  NT,
 };

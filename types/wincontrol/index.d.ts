@@ -41,24 +41,6 @@ declare interface AppConfiguration {
   winControlAffinity?: string;
 }
 
-declare interface WindowRect {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-  'ref.buffer'?: Buffer;
-}
-
-declare interface WindowInfo {
-  title?: string;
-  name?: string;
-  pid: number;
-  priorityClass?: number;
-  visible?: boolean;
-  isFullscreen: boolean;
-  rect?: WindowRect;
-}
-
 declare interface PowerShellProcessTime {
   Ticks: number;
   Days: number;

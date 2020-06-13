@@ -27,6 +27,8 @@ import {
   terminateProcess,
   suspendProcess,
   resumeProcess,
+  adjustPrivilege,
+  NT,
 } from './nt';
 import {
   getPhysicalCoreCount,
@@ -57,6 +59,8 @@ let now: number = 0;
 let lastLogTime: number = 0;
 let enforcePolicy: (processList: any[]) => void;
 let loadConfiguration: (configPath?: string) => Promise<any>;
+
+let canDebug = false;
 
 const validateAndParseProfile = (appConfig: AppConfiguration, profile: ProcessConfiguration, index: number, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
@@ -471,9 +475,11 @@ enforcePolicy = (processList): void => {
             switch (item.condition) {
               case 'running':
                 for (let i = 0, len = processList.length; i < len; i++) {
-                  if (item.forProcesses.indexOf(processList[i].name) > -1) {
+                  let {name} = processList[i];
+
+                  if (item.forProcesses.indexOf(name) > -1) {
                     item.active = true;
-                    if (logging) conditionReason = `${psName} is running`;
+                    if (logging) conditionReason = `${name} is running`;
                   }
                 }
                 break;
@@ -735,6 +741,7 @@ const getConfigInfo = () => {
   log.important(`Logging rate: ${appConfig.loggingInterval || appConfig.interval}ms`);
   log.important(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   log.important(`Hyperthreading: ${useHT ? '✓' : '✗'}`);
+  log.important(`Debug Privileges: ${canDebug ? '✓' : '✗'}`);
   log.important(`Fallback profile present: ${fallbackProfilePresent ? '✓' : '✗'}`);
   log.important(`Fullscreen profile present: ${fullscreenProfilePresent ? '✓' : '✗'}`);
   log.important(`Physical core count: ${physicalCoreCount}`);
@@ -749,6 +756,10 @@ const getConfigInfo = () => {
 const init = () => {
   // Lower the priority of wincontrol to idle
   setPriorityClass(process.pid, cpuPriorityMap.idle);
+
+  // Needed for setting ioPriority to high and modifying elevated processes
+  canDebug = adjustPrivilege(NT.SecurityEntity.SeDebugPrivilege)
+    && adjustPrivilege(NT.SecurityEntity.SeIncreaseBasePriorityPrivilege);
 
   getConfigInfo();
 
