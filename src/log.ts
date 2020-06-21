@@ -1,5 +1,5 @@
 import {EOL} from 'os';
-import {open, write, close} from 'fs';
+import {open, write, close, symlinkSync, unlinkSync, existsSync} from 'fs';
 import path from 'path';
 import {tryFn} from './lang'
 import {logDir, LogLevel} from './constants';
@@ -19,6 +19,7 @@ const processInput = (
 class Log {
   public location: string;
   public fileNamePrefix: string;
+  public lastFileName: string;
   public enabled: boolean = true;
   public enableConsoleLog: boolean = false;
   public closing: boolean = false;
@@ -72,10 +73,24 @@ class Log {
   public close() {
     if ((!this.enabled && !this.importantLinesQueued) || this.closing) return;
 
+    let {fileName} = this;
+
     this.closing = true;
     this.importantLinesQueued = false;
 
-    const configPath = path.resolve(this.location, this.fileName);
+    const configPath = path.resolve(this.location, fileName);
+
+    // Symlink the current day's log file as current.log
+    if (fileName !== this.lastFileName) {
+      let currentLogPath = path.join(this.location, 'current.log');
+
+      if (existsSync(currentLogPath)) unlinkSync(currentLogPath);
+
+      symlinkSync(configPath, currentLogPath, 'file');
+    }
+
+    this.lastFileName = fileName;
+
     const {lines} = this;
     let output = '';
 
