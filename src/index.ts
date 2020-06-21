@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import {EOL} from 'os';
+import {SnapshotOptions, ProcessSnapshot} from 'process-list';
 import {snapshot} from 'process-list';
 import {
   isDevelopment,
@@ -37,7 +38,8 @@ import {
   readYamlFile
 } from './utils';
 import {installTaskSchedulerTemplate} from './configuration';
-import {find, mergeObjects} from './lang';
+import {find} from '@jaszhix/utils';
+import {mergeObjects} from './lang';
 import log from './log';
 
 let appConfigPath = appConfigYamlPath;
@@ -53,11 +55,11 @@ let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
 let profileNames = [];
 let processesConfigured = [];
-let snapshotArgs = ['pid', 'name'];
+let snapshotArgs: (keyof SnapshotOptions)[] = ['pid', 'name'];
 let mtime: number = 0;
 let now: number = 0;
 let lastLogTime: number = 0;
-let enforcePolicy: (processList: any[]) => void;
+let enforcePolicy: (processList: ProcessSnapshot[]) => void;
 let loadConfiguration: (configPath?: string) => Promise<any>;
 
 let canDebug = false;
@@ -246,7 +248,7 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
         }
 
         fullscreenProfile = profile;
-        fullAffinity = profile.affinity;
+        fullAffinity = <number>profile.affinity;
         shouldContinue = true;
 
         break;
@@ -326,7 +328,7 @@ const runRoutine = (checkConfigChange = true): void => {
     .catch((err) => log.error(err));
 }
 
-enforcePolicy = (processList): void => {
+enforcePolicy = (processList: ProcessSnapshot[]): void => {
   if (!processList) return;
 
   if (timeout) clearTimeout(timeout);
@@ -336,8 +338,8 @@ enforcePolicy = (processList): void => {
   let {logging, loggingInterval, detailedLogging, ignoreProcesses} = appConfig;
   let isValidActiveFullscreenApp = false;
   let activeProcess;
-  let logItems: any[] = [];
-  let refLogItem: any;
+  let logItems: LogItem[] = [];
+  let refLogItem: LogItem;
   let logOutput: string = '';
 
   failedPids = [];
@@ -495,7 +497,8 @@ enforcePolicy = (processList): void => {
                 }
                 break;
               case 'active':
-                if (activeProcess.name === psName) {
+                if (activeProcess.name === psName
+                  || (item.forProcesses && item.forProcesses.indexOf(activeProcess.name) > -1)) {
                   item.active = true;
                   if (logging) conditionReason = `Process '${psName}' is active`;
                 }
@@ -554,7 +557,7 @@ enforcePolicy = (processList): void => {
         resumeDelay = profile.resumeDelay;
 
         terminationDelay = profile.terminationDelay;
-        affinity = profile.affinity;
+        affinity = <number>profile.affinity;
         cpuPriority = profile.cpuPriority;
         pagePriority = profile.pagePriority;
         ioPriority = profile.ioPriority;

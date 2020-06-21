@@ -29,6 +29,7 @@
     "yaml": "^1.7.2"
   },
   "devDependencies": {
+    "@jaszhix/utils": "1.0.5",
     "@types/ffi": "^0.2.2",
     "@types/jest": "^25.1.2",
     "@types/lodash": "^4.14.149",

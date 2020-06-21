@@ -13,7 +13,7 @@ declare interface Conditional {
 declare interface ProcessConfiguration {
   name?: string;
   cmd?: string[];
-  affinity?: number;
+  affinity?: number | string;
   affinityName?: number;
   graph?: string;
   cpuPriority?: number;
@@ -164,4 +164,57 @@ declare interface PowerShellProcess {
   Description?: string;
   Product?: string;
   __NounName?: string;
+}
+
+declare interface PSLogItem {
+  psName: string;
+  cmdAffected?: string;
+  pids: number[];
+}
+
+declare interface LogItem extends ProcessConfiguration {
+  name: string;
+  isDisabled: boolean;
+  isReplacedBy: string;
+  conditionReason: string;
+  affected: PSLogItem[];
+  failed: PSLogItem[];
+}
+
+declare module 'process-list' {
+  export interface ProcessSnapshot {
+    name: string;
+    pid: number;
+    ppid: number;
+    path: string;
+    threads: number;
+    owner: string;
+    priority: number;
+    cmdline: string;
+    starttime: Date;
+    vmem: string;
+    pmem: string;
+    cpu: number;
+    utime: string;
+    stime: string;
+  }
+
+  export interface SnapshotOptions {
+    name: boolean;
+    pid: boolean;
+    ppid: boolean;
+    path: boolean;
+    threads: boolean;
+    owner: boolean;
+    priority: boolean;
+    cmdline: boolean;
+    starttime: boolean;
+    vmem: boolean;
+    pmem: boolean;
+    cpu: boolean;
+    utime: boolean;
+    stime: boolean;
+  }
+
+  export function snapshot(...args: (keyof SnapshotOptions)[]): Promise<Partial<ProcessSnapshot>[]>;
 }
