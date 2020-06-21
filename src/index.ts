@@ -607,16 +607,6 @@ enforcePolicy = (processList): void => {
       }
     }
 
-    if (suspensionDelay != null) {
-      setTimeout(() => suspendProcess(pid), suspensionDelay);
-      continue;
-    }
-
-    if (resumeDelay != null) {
-      setTimeout(() => resumeProcess(pid), resumeDelay);
-      continue;
-    }
-
     if (terminationDelay != null) {
       setTimeout(() => terminateProcess(pid), terminationDelay);
       continue;
@@ -635,6 +625,16 @@ enforcePolicy = (processList): void => {
     }
 
     if (affinity != null && !attemptProcessModification(setProcessorAffinity, psName, cmdline, pid, affinity)) {
+      continue;
+    }
+
+    if (suspensionDelay != null) {
+      setTimeout(() => suspendProcess(pid), suspensionDelay);
+      continue;
+    }
+
+    if (resumeDelay != null) {
+      setTimeout(() => resumeProcess(pid), resumeDelay);
       continue;
     }
   }
