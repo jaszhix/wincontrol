@@ -10,7 +10,7 @@ import {
 //@ts-ignore
 process.on('uncaughtException', async (err, origin) => {
   if (err.message.includes('Could not locate the bindings file')) {
-    await restartHidden(true);
+    await restartHidden();
   }
 });
 
@@ -862,13 +862,6 @@ const init = async () => {
   }
 
   loadConfiguration();
-
-  if (process.argv.includes('-restart')) {
-    let [, pid] = process.argv[2].split('=');
-    let id = parseInt(pid);
-
-    terminateProcess(id);
-  }
 }
 
 if (!process.env.TEST_ENV) {
