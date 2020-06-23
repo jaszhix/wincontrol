@@ -1,1 +1,0 @@
-CreateObject("Wscript.Shell").Run "elevate -c powershell.exe ""./runWinControl.vbs""", 0

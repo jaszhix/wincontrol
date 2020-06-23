@@ -2,9 +2,10 @@
 
 import {EOL} from 'os';
 import fs from 'fs-extra';
-import {exec} from 'child_process';
+import path from 'path';
+import {exec, spawn} from 'child_process';
 import yaml from 'yaml';
-import {execOptions} from './constants';
+import {execOptions, currentDir, assets} from './constants';
 
 const exc = (cmd): Promise<any> => {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,72 @@ const copyFile = (source, target): Promise<any> => {
     });
     read.pipe(write);
   });
+}
+
+// https://github.com/vercel/pkg/issues/342
+
+const unpackAssets = async () => {
+  for (let i = 0, len = assets.length; i < len; i++) {
+    let asset = assets[i];
+    let source = path.join(__dirname, `.${asset}`);
+    let target = path.join(currentDir, asset);
+
+    if (asset.slice(-2) === '.n') {
+      target += 'ode';
+    }
+
+    if (await fs.exists(target)) continue;
+
+    await fs.ensureFile(target);
+
+    fs.createReadStream(source).pipe(fs.createWriteStream(target));
+  }
+}
+
+const isElevated = async () => {
+  try {
+    await exc('fsutil dirty query %systemdrive%');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+const restartHidden = async () => {
+  if (process.argv.includes('-restart')) return;
+
+  await unpackAssets();
+
+  if (!(await isElevated())) {
+    let run1Path = path.join(currentDir, 'run1.vbs');
+    let run2Path = path.join(currentDir, 'run2.vbs');
+
+    if (!fs.existsSync(run1Path)) fs.ensureFileSync(run1Path);
+    if (!fs.existsSync(run2Path)) fs.ensureFileSync(run2Path);
+
+    fs.writeFileSync(run1Path, `CreateObject("Wscript.Shell").Run "${path.join(currentDir, './assets/elevate.exe')} -c powershell.exe ""${run2Path}""", 0`);
+    fs.writeFileSync(run2Path, `CreateObject("Wscript.Shell").Run "${path.join(currentDir, './wincontrol.exe')} -restart", 0`);
+
+    spawn('wscript', [run1Path], {
+      detached: true,
+      env: {
+        processRestarting: '1'
+      },
+      stdio: 'ignore'
+    }).unref();
+
+    return;
+  }
+
+  spawn(process.argv[0], process.argv.slice(1), {
+    detached: true,
+    env: {
+      processRestarting: '1'
+    },
+    stdio: 'ignore'
+  }).unref();
+
+  setTimeout(() => process.exit(0), 100);
 }
 
 const readYamlFile = (path: string): Promise<any> => {
@@ -156,8 +223,11 @@ const getEnumKeyFromValue = <T>(Enum: T, enumValue: unknown): keyof T | string =
 
 export {
   exc,
+  restartHidden,
+  unpackAssets,
   getPhysicalCoreCount,
   getUserSID,
+  isElevated,
   copyFile,
   readYamlFile,
   getAffinityForCoreRanges,

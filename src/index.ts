@@ -1,4 +1,19 @@
 import fs from 'fs-extra';
+import {
+  restartHidden,
+  getPhysicalCoreCount,
+  copyFile,
+  getAffinityForCoreRanges,
+  readYamlFile,
+} from './utils';
+
+//@ts-ignore
+process.on('uncaughtException', async (err, origin) => {
+  if (err.message.includes('Could not locate the bindings file')) {
+    await restartHidden(true);
+  }
+});
+
 import {EOL} from 'os';
 import {SnapshotOptions, ProcessSnapshot} from 'process-list';
 import {snapshot} from 'process-list';
@@ -31,12 +46,7 @@ import {
   adjustPrivilege,
   NT,
 } from './nt';
-import {
-  getPhysicalCoreCount,
-  copyFile,
-  getAffinityForCoreRanges,
-  readYamlFile
-} from './utils';
+
 import {installTaskSchedulerTemplate} from './configuration';
 import {find} from '@jaszhix/utils';
 import {mergeObjects} from './lang';
@@ -756,7 +766,7 @@ const getConfigInfo = () => {
   log.close();
 }
 
-const init = () => {
+const setup = () => {
   // Lower the priority of wincontrol to idle
   setPriorityClass(process.pid, cpuPriorityMap.idle);
 
@@ -827,13 +837,15 @@ loadConfiguration = (configPath?: string): Promise<any> => {
 
       log.open();
 
+      log.important(process.argv)
+
       if (logLevelInvalid) log.error(`Invalid configuration: ${config.logLevel} is not a valid log level.`)
 
       appConfig = config;
 
       parseProfilesConfig(appConfig);
 
-      init();
+      setup();
     })
     .catch((e) => {
       log.error(e);
@@ -841,8 +853,26 @@ loadConfiguration = (configPath?: string): Promise<any> => {
     });
 }
 
-if (!process.env.TEST_ENV) {
+const init = async () => {
+  if (!process.env.processRestarting) {
+    await restartHidden();
+  } else {
+    terminateProcess(parseInt(process.env.processRestarting));
+    delete process.env.processRestarting;
+  }
+
   loadConfiguration();
+
+  if (process.argv.includes('-restart')) {
+    let [, pid] = process.argv[2].split('=');
+    let id = parseInt(pid);
+
+    terminateProcess(id);
+  }
+}
+
+if (!process.env.TEST_ENV) {
+  init();
 }
 
 export {loadConfiguration, parseProfilesConfig, resetGlobals};

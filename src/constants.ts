@@ -10,8 +10,19 @@ const execOptions: any = {
   stdio: ['ignore', 'pipe', 'ignore']
 }
 
+const assets = [
+  './config.yaml',
+  './assets/elevate.exe',
+  './node_modules/ffi/build/Release/ffi_bindings.n',
+  './node_modules/iconv/build/Release/iconv.n',
+  './node_modules/ref/build/Release/binding.n',
+  './node_modules/process-list/build/Release/processlist.n',
+];
+
 const isDevelopment = process.env.NODE_ENV === 'development';
 const coreCount: number = cpus().length;
+const pathSegments = process.argv[0].split('\\');
+const currentDir = process.argv[0].split(`\\${pathSegments[pathSegments.length - 1]}`)[0];
 const homeDir: string = homedir();
 const appDir: string = `${homeDir}\\AppData\\Roaming\\WinControl`;
 const logDir: string = `${appDir}\\logs`;
@@ -89,8 +100,10 @@ enum GW {
 
 export {
   execOptions,
+  assets,
   isDevelopment,
   coreCount,
+  currentDir,
   homeDir,
   appDir,
   logDir,

@@ -13,6 +13,16 @@
   },
   "author": "",
   "license": "MIT",
+  "pkg": {
+    "assets": [
+      "./assets/*",
+      "./config.yaml",
+      "./node_modules/ffi/build/Release/ffi_bindings.n",
+      "./node_modules/iconv/build/Release/iconv.n",
+      "./node_modules/ref/build/Release/binding.n",
+      "./node_modules/process-list/build/Release/processlist.n"
+    ]
+  },
   "dependencies": {
     "@typescript-eslint/eslint-plugin": "^2.19.2",
     "@typescript-eslint/parser": "^2.19.2",
