@@ -15,7 +15,7 @@ fs.ensureDir('./staging')
   .then(() => copyFile('node_modules/iconv/build/Release/iconv.node', 'node_modules/iconv/build/Release/iconv.n'))
   .then(() => copyFile('node_modules/ref/build/Release/binding.node', 'node_modules/ref/build/Release/binding.n'))
   .then(() => copyFile('node_modules/process-list/build/Release/processlist.node', 'node_modules/process-list/build/Release/processlist.n'))
-  .then(() => exec(['./dist/index.js', '--debug', '-c',  'package.json', '-t', 'node12-win', '-o', './staging/wincontrol']))
+  .then(() => exec(['./dist/index.js',/*  '--debug', */ '-c',  'package.json', '-t', 'node12-win', '-o', './staging/wincontrol']))
   .then(() => {
     const output = fs.createWriteStream(`./release/wincontrol-${packageJSON.version}.zip`);
     // @ts-ignore

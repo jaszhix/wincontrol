@@ -11,7 +11,10 @@ import {
 process.on('uncaughtException', async (err, origin) => {
   if (err.message.includes('Could not locate the bindings file')) {
     await restartHidden();
+    return;
   }
+
+  throw err;
 });
 
 import {EOL} from 'os';
@@ -335,7 +338,10 @@ const runRoutine = (checkConfigChange = true): void => {
     return snapshot(...snapshotArgs);
   })
     .then(enforcePolicy)
-    .catch((err) => log.error(err));
+    .catch((err) => {
+      log.error(err);
+      log.close();
+    });
 }
 
 enforcePolicy = (processList: ProcessSnapshot[]): void => {
@@ -857,7 +863,6 @@ const init = async () => {
   if (!process.env.processRestarting) {
     await restartHidden();
   } else {
-    terminateProcess(parseInt(process.env.processRestarting));
     delete process.env.processRestarting;
   }
 

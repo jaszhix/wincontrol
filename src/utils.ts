@@ -78,7 +78,7 @@ const isElevated = async () => {
 }
 
 const restartHidden = async () => {
-  if (process.argv.includes('-restart')) return;
+  if (process.argv.includes('-restart') || process.env.NODE_ENV === 'development') return;
 
   await unpackAssets();
 
