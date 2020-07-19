@@ -29,7 +29,7 @@
     "archiver": "^3.1.1",
     "ffi": "github:lxe/node-ffi#node-12",
     "fs-extra": "^8.1.0",
-    "lodash": "^4.17.15",
+    "lodash": "^4.17.19",
     "pify": "^4.0.1",
     "process-list": "^2.0.0",
     "ref": "github:lxe/ref#node-12",
