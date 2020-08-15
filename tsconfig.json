@@ -17,7 +17,8 @@
     "src",
   ],
   "exclude": [
-    "build.ts"
+    "build.ts",
+    "index.test.ts"
   ],
   "compileOnSave": true
 }

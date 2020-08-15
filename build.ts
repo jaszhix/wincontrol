@@ -1,3 +1,4 @@
+// @ts-nocheck
 import fs from 'fs-extra';
 import path from 'path'
 import del from 'del';
@@ -28,5 +29,5 @@ fs.ensureDir('./staging')
   })
   .then(() => console.log('Finished'))
   .catch((e) => {
-    throw e;
+    console.log(e)
   });

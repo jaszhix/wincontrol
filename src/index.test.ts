@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {EOL} from 'os';
 import {loadConfiguration, parseProfilesConfig, resetGlobals} from './index';
 
