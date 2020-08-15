@@ -1,34 +1,3 @@
-/* Helper functions that are faster than native alternatives in some situations. */
-
-const each = function(obj: object | any[], fn: Function): undefined {
-  if (Array.isArray(obj)) {
-    for (let i = 0, len = obj.length; i < len; i++) {
-      if (fn(obj[i], i) === false) {
-        return;
-      }
-    }
-  } else if (typeof obj === 'object') {
-    let keys = Object.keys(obj);
-    for (let i = 0, len = keys.length; i < len; i++) {
-      fn(obj[keys[i]], keys[i]);
-    }
-  }
-};
-
-const rEach = function(array: any[], fn: Function, finishFn: Function, i: number = -1): undefined {
-  let next: Function;
-
-  i++;
-
-  if (array[i] === undefined) {
-    if (typeof finishFn === 'function') finishFn();
-    return;
-  }
-
-  next = () => rEach(array, fn, finishFn, i);
-  fn(array[i], i, next);
-}
-
 const findIndex = function(arr: any[], fn: Function): number {
   for (let i = 0, len = arr.length; i < len; i++) {
     if (fn(arr[i], i, arr)) {
@@ -116,8 +85,6 @@ const mergeObjects = (obj1, obj2) => {
 }
 
 export {
-  each,
-  rEach,
   findIndex,
   find,
   filter,
