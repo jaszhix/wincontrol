@@ -10,6 +10,11 @@ declare interface Conditional {
   active: boolean;
 }
 
+declare interface ProcessState {
+  isSuspended?: boolean;
+  lastCPUTime?: string;
+}
+
 declare interface ProcessConfiguration {
   name?: string;
   cmd?: string[];
@@ -20,11 +25,13 @@ declare interface ProcessConfiguration {
   pagePriority?: number;
   ioPriority?: number;
   terminationDelay?: number;
+  terminateOnce?: boolean;
   suspensionDelay?: number;
   resumeDelay?: number;
   processes?: string[];
   type?: 'standard' | 'fallback' | 'fullscreen';
   if?: Conditional[];
+  state?: ProcessState;
 }
 
 declare interface AppConfiguration {

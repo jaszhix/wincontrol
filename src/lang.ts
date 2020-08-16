@@ -78,6 +78,8 @@ const mergeObjects = (obj1, obj2) => {
   for (let i = 0, len = keys.length; i < len; i++) {
     let key = keys[i];
 
+    if (key === 'state') continue;
+
     if (obj2[key]) obj[key] = obj2[key];
   }
 

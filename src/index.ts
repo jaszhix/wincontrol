@@ -68,7 +68,7 @@ let timeout: NodeJS.Timeout = null;
 let appConfig: AppConfiguration = null;
 let profileNames = [];
 let processesConfigured = [];
-let snapshotArgs: (keyof SnapshotOptions)[] = ['pid', 'name'];
+let snapshotArgs: (keyof SnapshotOptions)[] = ['pid', 'name', 'utime'];
 let mtime: number = 0;
 let now: number = 0;
 let lastLogTime: number = 0;
@@ -79,9 +79,9 @@ let canDebug = false;
 
 const validateAndParseProfile = (appConfig: AppConfiguration, profile: ProcessConfiguration, index: number, isRootProfile = true) => {
   const affinity = find(appConfig.affinities, (obj) => obj.name === profile.affinity);
-  const {name, cpuPriority, pagePriority, ioPriority, cmd} = profile;
+  const {name, cpuPriority, pagePriority, ioPriority, cmd, suspensionDelay, resumeDelay, terminateOnce} = profile;
 
-  if (cmd && snapshotArgs.length === 2) snapshotArgs.push('cmdline');
+  if (cmd && snapshotArgs.length === 3) snapshotArgs.push('cmdline');
 
   if (isRootProfile) {
     if (!name) {
@@ -209,6 +209,17 @@ const validateAndParseProfile = (appConfig: AppConfiguration, profile: ProcessCo
     ioPriority: ioPriority != null ? ioPriorityMap[ioPriority] : undefined,
   });
 
+  if (suspensionDelay
+    || resumeDelay
+    || terminateOnce
+    || (profile.if
+      && find(profile.if, (e) => e.then.suspensionDelay || e.then.resumeDelay || e.then.terminateOnce))) {
+    profile.state = {
+      isSuspended: false,
+      lastCPUTime: '',
+    };
+  }
+
   return profile;
 }
 
@@ -277,7 +288,7 @@ const parseProfilesConfig = (appConfig: AppConfiguration): void => {
 
     // Move profiles containing the if property to the end of the results array.
     // The fallback profile should be the last item if found.
-    if (profile.if) {
+    if (profile.if && !profile.cmd) {
       endResults.push(profile);
     } else {
       results.push(profile);
@@ -312,7 +323,7 @@ const resetGlobals = () => {
   timeout = null;
   appConfig = null;
   now = lastLogTime = 0;
-  snapshotArgs = ['pid', 'name'];
+  snapshotArgs = ['pid', 'name', 'utime'];
   profileNames = [];
   processesConfigured = [];
 };
@@ -392,8 +403,10 @@ enforcePolicy = (processList: ProcessSnapshot[]): void => {
 
   for (let i = 0, len = processList.length; i < len; i++) {
     let ps = processList[i];
-    let {pid, name, cmdline} = ps;
+    let {pid, name, cmdline, utime} = ps;
+
     let psName = name;
+    let profileApplied: ProcessConfiguration;
 
     // Check the ignore list
     if (ignoreProcesses.indexOf(psName) > -1) continue;
@@ -407,6 +420,7 @@ enforcePolicy = (processList: ProcessSnapshot[]): void => {
     let pagePriority: number;
     let ioPriority: number;
     let terminationDelay: number;
+    let terminateOnce: boolean;
     let suspensionDelay: number;
     let resumeDelay: number;
     let systemAffinity: number;
@@ -569,10 +583,13 @@ enforcePolicy = (processList: ProcessSnapshot[]): void => {
         // intended to work for all processes.
         if (!fullscreenPriorityBoostAffected && !processMatched) continue;
 
+        profileApplied = profile;
+
         suspensionDelay = profile.suspensionDelay;
         resumeDelay = profile.resumeDelay;
 
         terminationDelay = profile.terminationDelay;
+        terminateOnce = profile.terminateOnce;
         affinity = <number>profile.affinity;
         cpuPriority = profile.cpuPriority;
         pagePriority = profile.pagePriority;
@@ -626,8 +643,14 @@ enforcePolicy = (processList: ProcessSnapshot[]): void => {
       }
     }
 
-    if (terminationDelay != null) {
-      setTimeout(() => terminateProcess(pid), terminationDelay);
+    if (profileApplied.state) {
+      profileApplied.state.isSuspended = profileApplied.state.lastCPUTime.length > 0 && profileApplied.state.lastCPUTime === utime;
+      profileApplied.state.lastCPUTime = utime;
+    }
+
+    if (terminationDelay != null
+      || (resumeDelay == null && suspensionDelay == null && terminateOnce && profileApplied.state.isSuspended)) {
+      setTimeout(() => terminateProcess(pid), terminationDelay || 1);
       continue;
     }
 
@@ -647,12 +670,12 @@ enforcePolicy = (processList: ProcessSnapshot[]): void => {
       continue;
     }
 
-    if (suspensionDelay != null) {
+    if (suspensionDelay != null && !terminateOnce && !profileApplied.state.isSuspended) {
       setTimeout(() => suspendProcess(pid), suspensionDelay);
       continue;
     }
 
-    if (resumeDelay != null) {
+    if (resumeDelay != null && profileApplied.state.isSuspended) {
       setTimeout(() => resumeProcess(pid), resumeDelay);
       continue;
     }
