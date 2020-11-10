@@ -4,10 +4,10 @@
 
 import {basename} from 'path';
 
-import {Library, Callback} from 'ffi';
-import ref from 'ref';
-import Struct from 'ref-struct';
-import wchar from 'ref-wchar';
+import {Library, Callback} from 'ffi-napi';
+import ref from 'ref-napi';
+import Struct from 'ref-struct-di';
+//import wchar from 'ref-wchar';
 
 import log from '../log';
 import {getEnumKeyFromValue} from '../utils';
@@ -173,7 +173,9 @@ namespace NT {
   }
 }
 
-const MemoryPriorityInformation = Struct({
+const StructType = Struct(ref);
+
+const MemoryPriorityInformation = StructType({
   MemoryPriority: 'uint'
 });
 const MemoryPriorityInformationType = ref.refType(MemoryPriorityInformation);
@@ -182,7 +184,7 @@ const MemoryPriorityInformationType = ref.refType(MemoryPriorityInformation);
 // https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowrect
 // https://docs.microsoft.com/en-us/previous-versions//dd162897(v=vs.85)
 
-const Rect = Struct({
+const Rect = StructType({
   left: 'long',
   top: 'long',
   right: 'long',
@@ -190,7 +192,7 @@ const Rect = Struct({
 });
 const RectType = ref.refType(Rect);
 
-const MonitorInfo = Struct({
+const MonitorInfo = StructType({
   cbSize: 'int',
   rcMonitor: Rect,
   rcWork: Rect,
@@ -321,67 +323,67 @@ const getWindowMonitorInfo = function(windowHandle): NT.MonitorInfo {
 
 // Adapted from https://github.com/sindresorhus/active-win
 
-const getWindowInfo = function(windowHandle): NT.WindowInfo {
-  const rect: NT.WindowRect = getWindowRect(windowHandle);
-  const monitorInfo = getWindowMonitorInfo(windowHandle);
+// const getWindowInfo = function(windowHandle): NT.WindowInfo {
+//   const rect: NT.WindowRect = getWindowRect(windowHandle);
+//   const monitorInfo = getWindowMonitorInfo(windowHandle);
 
-  let isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
-    && rect.bottom === monitorInfo.rcMonitor.bottom;
+//   let isFullscreen: boolean = rect.right === monitorInfo.rcMonitor.right
+//     && rect.bottom === monitorInfo.rcMonitor.bottom;
 
-  // Get the window text length in "characters", to create the buffer
-  const windowTextLength = user32.GetWindowTextLengthW(windowHandle);
-  // Allocate a buffer large enough to hold the window text as "Unicode" (UTF-16) characters (using ref-wchar)
-  // This assumes using the "Basic Multilingual Plane" of Unicode, only 2 characters per Unicode code point
-  // Include some extra bytes for possible null characters
-  const windowTextBuffer = Buffer.alloc((windowTextLength * 2) + 4);
-  // Write the window text to the buffer (it returns the text size, but is not used here)
-  user32.GetWindowTextW(windowHandle, windowTextBuffer, windowTextLength + 2);
-  // Remove trailing null characters
-  const windowTextBufferClean = ref.reinterpretUntilZeros(windowTextBuffer, wchar.size);
-  // The text as a JavaScript string
-  const windowTitle = wchar.toString(windowTextBufferClean);
+//   // Get the window text length in "characters", to create the buffer
+//   const windowTextLength = user32.GetWindowTextLengthW(windowHandle);
+//   // Allocate a buffer large enough to hold the window text as "Unicode" (UTF-16) characters (using ref-wchar)
+//   // This assumes using the "Basic Multilingual Plane" of Unicode, only 2 characters per Unicode code point
+//   // Include some extra bytes for possible null characters
+//   const windowTextBuffer = Buffer.alloc((windowTextLength * 2) + 4);
+//   // Write the window text to the buffer (it returns the text size, but is not used here)
+//   user32.GetWindowTextW(windowHandle, windowTextBuffer, windowTextLength + 2);
+//   // Remove trailing null characters
+//   const windowTextBufferClean = ref.reinterpretUntilZeros(windowTextBuffer, wchar.size);
+//   // The text as a JavaScript string
+//   const windowTitle = wchar.toString(windowTextBufferClean);
 
-  // Allocate a buffer to store the process ID
-  const processIdBuffer = ref.alloc('uint32');
-  // Write the process ID creating the window to the buffer (it returns the thread ID, but is not used here)
-  user32.GetWindowThreadProcessId(windowHandle, processIdBuffer);
+//   // Allocate a buffer to store the process ID
+//   const processIdBuffer = ref.alloc('uint32');
+//   // Write the process ID creating the window to the buffer (it returns the thread ID, but is not used here)
+//   user32.GetWindowThreadProcessId(windowHandle, processIdBuffer);
 
-  // Get the process ID as a number from the buffer
-  const processId: number = ref.get(processIdBuffer);
-  // Get a "handle" of the process
-  const processHandle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+//   // Get the process ID as a number from the buffer
+//   const processId: number = ref.get(processIdBuffer);
+//   // Get a "handle" of the process
+//   const processHandle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
 
-  // Set the path length to more than the Windows extended-length MAX_PATH length
-  const pathLengthBytes = 66000;
-  // Path length in "characters"
-  const pathLengthChars = Math.floor(pathLengthBytes / 2);
-  // Allocate a buffer to store the path of the process
-  const processFileNameBuffer = Buffer.alloc(pathLengthBytes);
-  // Create a buffer containing the allocated size for the path, as a buffer as it must be writable
-  const processFileNameSizeBuffer = ref.alloc('uint32', pathLengthChars);
-  // Write process file path to buffer
-  kernel32.QueryFullProcessImageNameW(processHandle, 0, processFileNameBuffer, processFileNameSizeBuffer);
-  // Remove null characters from buffer
-  const processFileNameBufferClean = ref.reinterpretUntilZeros(processFileNameBuffer, wchar.size);
-  // Get process file path as a string
-  const processPath = wchar.toString(processFileNameBufferClean);
-  // Get process file name from path
-  const processName = basename(processPath);
+//   // Set the path length to more than the Windows extended-length MAX_PATH length
+//   const pathLengthBytes = 66000;
+//   // Path length in "characters"
+//   const pathLengthChars = Math.floor(pathLengthBytes / 2);
+//   // Allocate a buffer to store the path of the process
+//   const processFileNameBuffer = Buffer.alloc(pathLengthBytes);
+//   // Create a buffer containing the allocated size for the path, as a buffer as it must be writable
+//   const processFileNameSizeBuffer = ref.alloc('uint32', pathLengthChars);
+//   // Write process file path to buffer
+//   kernel32.QueryFullProcessImageNameW(processHandle, 0, processFileNameBuffer, processFileNameSizeBuffer);
+//   // Remove null characters from buffer
+//   const processFileNameBufferClean = ref.reinterpretUntilZeros(processFileNameBuffer, wchar.size);
+//   // Get process file path as a string
+//   const processPath = wchar.toString(processFileNameBufferClean);
+//   // Get process file name from path
+//   const processName = basename(processPath);
 
-  const priorityClass = kernel32.GetPriorityClass(processHandle);
-  // Close the "handle" of the process
-  kernel32.CloseHandle(processHandle);
+//   const priorityClass = kernel32.GetPriorityClass(processHandle);
+//   // Close the "handle" of the process
+//   kernel32.CloseHandle(processHandle);
 
-  return {
-    title: windowTitle,
-    name: processName.toLowerCase(),
-    pid: processId,
-    priorityClass,
-    visible: user32.IsWindowVisible(windowHandle) > 0,
-    isFullscreen,
-    rect,
-  };
-};
+//   return {
+//     title: windowTitle,
+//     name: processName.toLowerCase(),
+//     pid: processId,
+//     priorityClass,
+//     visible: user32.IsWindowVisible(windowHandle) > 0,
+//     isFullscreen,
+//     rect,
+//   };
+// };
 
 const getBasicWindowInfo = function(windowHandle): NT.WindowInfo {
   const rect: NT.WindowRect = getWindowRect(windowHandle);
@@ -398,22 +400,22 @@ const getBasicWindowInfo = function(windowHandle): NT.WindowInfo {
   };
 };
 
-const getWindows = function(cb): void {
-  const windows = [];
+// const getWindows = function(cb): void {
+//   const windows = [];
 
-  const enumWindowsCallback = Callback('void', ['pointer'], function(windowHandle) {
-    const windowObject = getWindowInfo(windowHandle);
-    const refWindow = windows.findIndex(function(window) {
-      return window.pid === windowObject.pid;
-    });
+//   const enumWindowsCallback = Callback('void', ['pointer'], function(windowHandle) {
+//     const windowObject = getWindowInfo(windowHandle);
+//     const refWindow = windows.findIndex(function(window) {
+//       return window.pid === windowObject.pid;
+//     });
 
-    if (refWindow === -1) windows.push(windowObject);
-  });
+//     if (refWindow === -1) windows.push(windowObject);
+//   });
 
-  user32.EnumWindows(enumWindowsCallback, null);
+//   user32.EnumWindows(enumWindowsCallback, null);
 
-  cb(windows);
-};
+//   cb(windows);
+// };
 
 const getActiveWindow = function(): NT.WindowInfo {
   return getBasicWindowInfo(user32.GetForegroundWindow());
@@ -613,7 +615,7 @@ const adjustPrivilege = function(privilege: NT.SecurityEntity, enable = true, cu
 
 export {
   getActiveWindow,
-  getWindows,
+  //getWindows,
   getPriorityClass,
   getProcessorAffinity,
   setPriorityClass,
